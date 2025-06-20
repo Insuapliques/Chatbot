@@ -1,0 +1,140 @@
+[handleMsg]:  {
+  type: 'text',
+  from: '573229144940',
+  to: '573162756191',
+  body: 'Hola',
+  name: 'Juan Pruebas',
+  pushName: 'Juan Pruebas',
+  message_id: 'wamid.HBgMNTczMjI5MTQ0OTQwFQIAEhggMjNCMzk5QjFGQzlGQTNCQzhEQjM4MEIwMkVDRTkwRjUA',
+  timestamp: '1750450344',
+  host: '+57 316 2756191'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_d4c157ba-c9b0-41a6-b46e-04aa997d9b21',
+  keyword: 'key_3a9919b8-8cdb-4131-ac14-afdfe5034001',
+  answer: '__call_action__',
+  options: {
+    media: undefined,
+    buttons: [],
+    capture: false,
+    delay: 0,
+    idle: undefined,
+    ref: undefined,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: 'ac10dfb2f78bb6c449087844f7fa65c8'
+}
+[handleMsg]:  {
+  type: 'text',
+  from: '573229144940',
+  to: '573162756191',
+  body: 'Juan David',
+  name: 'Juan Pruebas',
+  pushName: 'Juan Pruebas',
+  message_id: 'wamid.HBgMNTczMjI5MTQ0OTQwFQIAEhggN0RGRUFGNTI1MEUwQUJBQkNFNkM3OUZFNDI3MTA3OEEA',
+  timestamp: '1750450362',
+  host: '+57 316 2756191'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_4802a98c-bc63-4545-b64b-0eaf1cdc9d64',
+  keyword: 'key_1574d43d-af6c-4901-98db-9a87248a36e1',
+  answer: '__call_action__',
+  options: {
+    media: undefined,
+    buttons: [],
+    capture: false,
+    delay: 0,
+    idle: undefined,
+    ref: undefined,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: '3d4cd9d07035a7197043c0f3f35fbdcc'
+}
+[handleMsg]:  {
+  type: 'text',
+  from: '573229144940',
+  to: '573162756191',
+  body: 'Me llamo Juan David',
+  name: 'Juan Pruebas',
+  pushName: 'Juan Pruebas',
+  message_id: 'wamid.HBgMNTczMjI5MTQ0OTQwFQIAEhggQzIzNjE4QzM2NzIwMzk0NTVFRjIwQUYzNDc4RDNDMzcA',
+  timestamp: '1750450380',
+  host: '+57 316 2756191'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_90ae3d40-cf5b-412e-95ae-9cb91e6a25e2',
+  keyword: 'key_c28b418e-a402-4da8-8f58-237b13e60d63',
+  answer: '__call_action__',
+  options: {
+    media: undefined,
+    buttons: [],
+    capture: false,
+    delay: 0,
+    idle: undefined,
+    ref: undefined,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: 'c09186510b0b91bd21c4102e88dc8a04'
+}
+[handleMsg]:  {
+  type: 'text',
+  from: '573229144940',
+  to: '573162756191',
+  body: 'Quiero información',
+  name: 'Juan Pruebas',
+  pushName: 'Juan Pruebas',
+  message_id: 'wamid.HBgMNTczMjI5MTQ0OTQwFQIAEhggRDcxQzMzQTQ2OTY3NDc1MTBGNzQwRTczQjgyNzRFQUMA',
+  timestamp: '1750450429',
+  host: '+57 316 2756191'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_4802a98c-bc63-4545-b64b-0eaf1cdc9d64',
+  keyword: 'key_1574d43d-af6c-4901-98db-9a87248a36e1',
+  answer: '__call_action__',
+  options: {
+    media: undefined,
+    buttons: [],
+    capture: false,
+    delay: 0,
+    idle: undefined,
+    ref: undefined,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: '3d4cd9d07035a7197043c0f3f35fbdcc'
+}
+[handleMsg]:  {
+  type: 'text',
+  from: '573229144940',
+  to: '573162756191',
+  body: 'Final',
+  name: 'Juan Pruebas',
+  pushName: 'Juan Pruebas',
+  message_id: 'wamid.HBgMNTczMjI5MTQ0OTQwFQIAEhggRTQ3NjFERTg0MzcwN0NGRTc1MURDNjc5RTAyQTlENDEA',
+  timestamp: '1750450475',
+  host: '+57 316 2756191'
+}
+[QUEUE_SE_ENVIO]:  {
+  ref: 'ans_4802a98c-bc63-4545-b64b-0eaf1cdc9d64',
+  keyword: 'key_1574d43d-af6c-4901-98db-9a87248a36e1',
+  answer: '__call_action__',
+  options: {
+    media: undefined,
+    buttons: [],
+    capture: false,
+    delay: 0,
+    idle: undefined,
+    ref: undefined,
+    nested: [],
+    keyword: {},
+    callback: true
+  },
+  refSerialize: '3d4cd9d07035a7197043c0f3f35fbdcc'
+}
