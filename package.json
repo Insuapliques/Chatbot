@@ -17,16 +17,20 @@
     "express": "^4.21.2",
     "firebase": "^11.4.0",
     "firebase-admin": "^13.4.0",
+    "multer": "^2.0.1",
     "node-fetch": "^3.3.2",
     "openai": "^4.87.3",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/multer": "^2.0.0",
     "@types/node": "^20.19.1",
     "@types/node-fetch": "^2.6.12",
     "@types/uuid": "^10.0.0",
+    "@types/xlsx": "^0.0.35",
     "@typescript-eslint/eslint-plugin": "^7.2.0",
     "@typescript-eslint/parser": "^7.4.0",
     "eslint": "^8.52.0",
