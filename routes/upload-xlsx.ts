@@ -10,7 +10,7 @@ interface MulterRequest extends Request {
   file?: Express.Multer.File;
 }
 
-router.post('/upload-xlsx', upload.single('archivo'), async (req: MulterRequest, res: Response): Promise<void> => {
+router.post('/', upload.single('archivo'), async (req: MulterRequest, res: Response) => {
   try {
     if (!req.file) {
       res.status(400).json({ error: 'No se recibió ningún archivo' });
