@@ -11,7 +11,7 @@ import { db } from './firebaseConfig';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { v4 as uuidv4 } from 'uuid';
-import fetch from 'node-fetch';import uploadXLSXRoute from '../routes/upload-xlsx';
+import fetch from 'node-fetch';
 
 
 
@@ -22,7 +22,7 @@ app.use(cors());
 app.use(express.json());
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/training', trainingRoutes);
-app.use('/api/upload-xlsx', uploadXLSXRoute);
+
 
 const PORT = process.env.PORT || 3008;
 
