@@ -3,7 +3,7 @@
 // y proporciona respuestas automatizadas basadas en palabras clave y productos mencionados.
 import { addKeyword } from '@builderbot/bot';
 import { guardarCliente, obtenerCliente } from '../clienteService';
-import { getChatGPTResponse, buscarProductoChatbot } from '../aiService';
+import { answerWithPromptBase, buscarProductoChatbot, type AIContextMessage } from '../aiService';
 import { db } from '../firebaseConfig';
 import { guardarMensajeEnLiveChat, guardarConversacionEnHistorial } from '../services/chatLogger';
 import { extraerProductoDelMensaje } from '../utils/extraerProductoDelMensaje';
@@ -138,7 +138,14 @@ const inteligenciaArtificialFlow = addKeyword([
     }
   }
 
-  const { text: respuesta, isClosing } = await getChatGPTResponse(ctx.body);
+  const contextMessages: AIContextMessage[] | undefined = nombre
+    ? [{ role: 'system', content: `El cliente se llama ${nombre}.` }]
+    : undefined;
+
+  const { text: respuesta, isClosing } = await answerWithPromptBase({
+    userMessage: ctx.body,
+    context: contextMessages,
+  });
   await guardarConversacionEnHistorial(ctx, respuesta, "bot");
   await flowDynamic(respuesta || "Lo siento, ¿puedes repetirlo de otra forma?");
   await db.collection("liveChatStates").doc(ctx.from).set({ modoHumano: false }, { merge: true });
