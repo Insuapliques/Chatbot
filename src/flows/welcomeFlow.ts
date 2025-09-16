@@ -141,7 +141,10 @@ const inteligenciaArtificialFlow = addKeyword([
     }
   }
 
-  const { text: respuesta, isClosing } = await getChatGPTResponse(ctx.body);
+  const { text: respuesta, isClosing } = await getChatGPTResponse(
+    ctx.body,
+    ctx.from
+  );
   await guardarConversacionEnHistorial(ctx, respuesta, "bot");
   await flowDynamic(respuesta || "Lo siento, ¿puedes repetirlo de otra forma?");
   await db.collection("liveChatStates").doc(ctx.from).set({ modoHumano: false }, { merge: true });

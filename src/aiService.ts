@@ -4,13 +4,11 @@ dotenv.config();
 import { db } from "./firebaseConfig";
 import OpenAI from "openai";
 
-// 🔧 FALTA ESTO PARA USAR Firestore
-import { collection, getDocs } from "firebase/firestore";
-
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export const getChatGPTResponse = async (
-  userMessage: string
+  userMessage: string,
+  userId: string
 ): Promise<{ text: string; isClosing: boolean }> => {
   try {
     const configSnap = await db.collection("settings").doc("prompts").get();
@@ -20,12 +18,62 @@ export const getChatGPTResponse = async (
       config?.entrenamiento_base || "Actúa como un asistente de ventas.";
     const palabraCierre = config?.palabra_cierre || "Lead en Proceso";
 
+    const conversationSnap = await db.collection("conversations").doc(userId).get();
+    const conversationData = conversationSnap.data();
+    const storedMessages =
+      conversationSnap.exists && Array.isArray(conversationData?.messages)
+        ? conversationData.messages
+        : [];
+
+    const historyMessages = storedMessages
+      .filter(
+        (message: any) =>
+          message && typeof message.text === "string" && message.text.trim().length > 0
+      )
+      .sort((a: any, b: any) => {
+        const getMillis = (msg: any) => {
+          const { timestamp } = msg || {};
+          if (timestamp && typeof timestamp.toMillis === "function") {
+            return timestamp.toMillis();
+          }
+          if (timestamp && typeof timestamp === "object") {
+            const seconds =
+              ("seconds" in timestamp ? timestamp.seconds : undefined) ??
+              ("_seconds" in timestamp ? timestamp._seconds : undefined) ??
+              0;
+            const nanoseconds =
+              ("nanoseconds" in timestamp ? timestamp.nanoseconds : undefined) ??
+              ("_nanoseconds" in timestamp ? timestamp._nanoseconds : undefined) ??
+              0;
+            return seconds * 1000 + Math.floor(nanoseconds / 1_000_000);
+          }
+          return 0;
+        };
+
+        return getMillis(a) - getMillis(b);
+      })
+      .map((message: any) => ({
+        role: message.from === "bot" ? "assistant" : "user",
+        content: message.text,
+      }));
+
+    const messages = [
+      { role: "system", content: basePrompt },
+      ...historyMessages,
+    ];
+
+    const lastHistoryMessage = historyMessages[historyMessages.length - 1];
+    if (
+      !lastHistoryMessage ||
+      lastHistoryMessage.role !== "user" ||
+      lastHistoryMessage.content !== userMessage
+    ) {
+      messages.push({ role: "user", content: userMessage });
+    }
+
     const chatCompletion = await openai.chat.completions.create({
       model: "gpt-4",
-      messages: [
-        { role: "system", content: basePrompt },
-        { role: "user", content: userMessage },
-      ],
+      messages,
     });
 
     const respuesta = chatCompletion.choices[0].message.content || "";
