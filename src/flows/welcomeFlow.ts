@@ -3,7 +3,7 @@
 // y proporciona respuestas automatizadas basadas en palabras clave y productos mencionados.
 import { addKeyword } from '@builderbot/bot';
 import { guardarCliente, obtenerCliente } from '../clienteService';
-import { getChatGPTResponse } from '../aiService';
+import { getChatGPTResponse, buscarProductoChatbot } from '../aiService';
 import { db } from '../firebaseConfig';
 import { guardarMensajeEnLiveChat, guardarConversacionEnHistorial } from '../services/chatLogger';
 import { extraerProductoDelMensaje } from '../utils/extraerProductoDelMensaje';
@@ -115,20 +115,17 @@ const inteligenciaArtificialFlow = addKeyword([
     return;
   }
 
-  const productosSnap = await db.collection("productos_chatbot").get();
-  for (const docProd of productosSnap.docs) {
-    const { keyword, respuesta, tipo, url } = docProd.data();
-    if (keyword && ctx.body.toLowerCase().includes(keyword.toLowerCase())) {
-      const mensaje = respuesta || await getMensaje("recursoGenerico");
-      await guardarConversacionEnHistorial(ctx, mensaje, "bot");
+  const productoChatbot = await buscarProductoChatbot(ctx.body);
+  if (productoChatbot) {
+    const mensaje = productoChatbot.respuesta || await getMensaje("recursoGenerico");
+    await guardarConversacionEnHistorial(ctx, mensaje, "bot");
 
-      if (["pdf", "imagen", "video"].includes(tipo)) {
-        await flowDynamic([{ body: mensaje, media: url }]);
-      } else {
-        await flowDynamic(mensaje);
-      }
-      return;
+    if (["pdf", "imagen", "video"].includes(productoChatbot.tipo)) {
+      await flowDynamic([{ body: mensaje, media: productoChatbot.url }]);
+    } else {
+      await flowDynamic(mensaje);
     }
+    return;
   }
 
   const productoDetectado = extraerProductoDelMensaje(ctx.body);
