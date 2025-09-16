@@ -1,13 +1,21 @@
 import express from "express";
+import { z } from "zod";
 import { db } from "../src/firebaseConfig";
 
 const router = express.Router();
 const collectionName = "training";
 
-interface TrainingEntry {
-    question: string;
-    answer: string;
-}
+const trainingEntrySchema = z.object({
+    question: z.string().min(1, "La pregunta es obligatoria"),
+    answer: z.string().min(1, "La respuesta es obligatoria"),
+});
+type TrainingEntry = z.infer<typeof trainingEntrySchema>;
+
+const formatZodErrors = (error: z.ZodError) =>
+    error.errors.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+    }));
 
 // Obtener todas las respuestas del entrenamiento
 router.get("/", async (_req, res) => {
@@ -26,13 +34,17 @@ router.get("/", async (_req, res) => {
 // Agregar una nueva pregunta-respuesta al entrenamiento
 router.post("/", async (req, res) => {
     try {
-        const { question, answer } = req.body as TrainingEntry;
-        if (typeof question !== "string" || typeof answer !== "string" || !question.trim() || !answer.trim()) {
-            res.status(400).json({ error: "Se requieren 'question' y 'answer' válidos" });
+        const validation = trainingEntrySchema.safeParse(req.body);
+
+        if (!validation.success) {
+            res.status(400).json({
+                error: "Cuerpo de la petición inválido",
+                details: formatZodErrors(validation.error),
+            });
             return;
         }
 
-        const newEntry = await db.collection(collectionName).add({ question, answer });
+        const newEntry = await db.collection(collectionName).add(validation.data);
         res.status(201).json({ success: true, id: newEntry.id });
     } catch (error: any) {
         res.status(500).json({ error: "Error al agregar la respuesta", details: error?.message || error });
@@ -43,10 +55,13 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
     try {
         const { id } = req.params;
-        const { question, answer } = req.body as TrainingEntry;
+        const validation = trainingEntrySchema.safeParse(req.body);
 
-        if (typeof question !== "string" || typeof answer !== "string" || !question.trim() || !answer.trim()) {
-            res.status(400).json({ error: "Se requieren 'question' y 'answer' válidos" });
+        if (!validation.success) {
+            res.status(400).json({
+                error: "Cuerpo de la petición inválido",
+                details: formatZodErrors(validation.error),
+            });
             return;
         }
 
@@ -58,7 +73,7 @@ router.put("/:id", async (req, res) => {
             return;
         }
 
-        await docRef.update({ question, answer });
+        await docRef.update(validation.data);
         res.json({ success: true, message: "Respuesta actualizada" });
     } catch (error: any) {
         res.status(500).json({ error: "Error al actualizar la respuesta", details: error?.message || error });

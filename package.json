@@ -21,7 +21,8 @@
     "node-fetch": "^3.3.2",
     "openai": "^4.87.3",
     "uuid": "^11.1.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

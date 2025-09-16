@@ -1,5 +1,17 @@
 import express from "express";
+import { z } from "zod";
 import { db } from "../src/firebaseConfig";
+
+const saveConversationSchema = z.object({
+    userMessage: z.string().min(1, "El mensaje del usuario es obligatorio"),
+    botResponse: z.string().min(1, "La respuesta del bot es obligatoria"),
+});
+
+const formatZodErrors = (error: z.ZodError) =>
+    error.errors.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+    }));
 
 const router = express.Router();
 
@@ -17,12 +29,17 @@ router.get("/", async (req, res) => {
 // Guardar conversación en Firestore
 router.post("/", async (req, res) => {
     try {
-        const { userMessage, botResponse } = req.body;
+        const validation = saveConversationSchema.safeParse(req.body);
 
-        if (!userMessage || !botResponse) {
-            res.status(400).json({ error: "Se requieren 'userMessage' y 'botResponse'" });
+        if (!validation.success) {
+            res.status(400).json({
+                error: "Cuerpo de la petición inválido",
+                details: formatZodErrors(validation.error),
+            });
             return;
         }
+
+        const { userMessage, botResponse } = validation.data;
 
         await db.collection("conversations").add({
             userMessage,
@@ -30,10 +47,11 @@ router.post("/", async (req, res) => {
             timestamp: new Date()
         });
 
-        res.json({ success: true });
+        res.status(201).json({ success: true });
     } catch (error: any) {
         res.status(500).json({ error: "Error al guardar la conversación", details: error?.message || error });
     }
 });
 
 export default router;
+
