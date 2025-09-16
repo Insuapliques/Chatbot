@@ -20,15 +20,17 @@ export const getChatGPTResponse = async (
       config?.entrenamiento_base || "Actúa como un asistente de ventas.";
     const palabraCierre = config?.palabra_cierre || "Lead en Proceso";
 
-    const chatCompletion = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        { role: "system", content: basePrompt },
-        { role: "user", content: userMessage },
-      ],
+    const inputSegments = [
+      { role: "system", content: basePrompt },
+      { role: "user", content: userMessage },
+    ];
+
+    const response = await openai.responses.create({
+      model: "gpt-5",
+      input: inputSegments,
     });
 
-    const respuesta = chatCompletion.choices[0].message.content || "";
+    const respuesta = response.output_text ?? "";
     const isClosing = respuesta
       .toLowerCase()
       .includes(palabraCierre.toLowerCase());
