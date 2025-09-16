@@ -1,5 +1,6 @@
 import { addKeyword } from '@builderbot/bot';
 import { db } from '../firebaseConfig';
+import { enableHandoff } from '../services/liveChatService';
 
 export const asesorHumanoFlow = addKeyword([ 'quiero hablar con alguien', 'asesor humano', 'atención personalizada', 'prefiero hablar con alguien directamente', 'necesito un humano', 'hablar con asesor', 'quiero atención de una persona'
 ])
@@ -12,6 +13,14 @@ export const asesorHumanoFlow = addKeyword([ 'quiero hablar con alguien', 'aseso
       user: from,
       timestamp: new Date(),
       status: 'pendiente'
+    });
+
+    await enableHandoff({
+      userId: from,
+      reason: 'solicitud_usuario',
+      metadata: {
+        estadoSolicitud: 'pendiente'
+      }
     });
 
     await flowDynamic('🕐 Un asesor se pondrá en contacto contigo pronto.');

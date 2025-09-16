@@ -6,6 +6,7 @@ import { guardarCliente, obtenerCliente } from '../clienteService';
 import { getChatGPTResponse, buscarProductoChatbot } from '../aiService';
 import { db } from '../firebaseConfig';
 import { guardarMensajeEnLiveChat, guardarConversacionEnHistorial } from '../services/chatLogger';
+import { disableHandoff, enableHandoff } from '../services/liveChatService';
 import { extraerProductoDelMensaje } from '../utils/extraerProductoDelMensaje';
 import { getProductoDesdeXLSX } from '~/utils/getProductoDesdeXLSX';
 
@@ -84,7 +85,14 @@ const inteligenciaArtificialFlow = addKeyword([
       timestamp: new Date()
     });
 
-    await db.collection("liveChatStates").doc(ctx.from).set({ modoHumano: true }, { merge: true });
+    await enableHandoff({
+      userId: ctx.from,
+      operator: {},
+      reason: 'solicitud_usuario',
+      metadata: {
+        estadoSolicitud: 'pendiente'
+      }
+    });
 
     const mensaje = await getMensaje("atencionHumana");
     await guardarConversacionEnHistorial(ctx, mensaje, "bot");
@@ -141,7 +149,7 @@ const inteligenciaArtificialFlow = addKeyword([
   const { text: respuesta, isClosing } = await getChatGPTResponse(ctx.body);
   await guardarConversacionEnHistorial(ctx, respuesta, "bot");
   await flowDynamic(respuesta || "Lo siento, ¿puedes repetirlo de otra forma?");
-  await db.collection("liveChatStates").doc(ctx.from).set({ modoHumano: false }, { merge: true });
+  await disableHandoff({ userId: ctx.from, reason: 'respuesta_bot' });
 
   if (isClosing) {
     const menu = await getMensaje("cierreMenuFinal");

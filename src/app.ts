@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv';
 import { createBot, createProvider } from '@builderbot/bot';
 import { MemoryDB as Database } from '@builderbot/bot';
 import { MetaProvider as Provider } from '@builderbot/provider-meta';
-import express from 'express';
+import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import trainingRoutes from '../routes/trainingRoutes';
 import conversationRoutes from '../routes/conversationRoutes';
@@ -12,6 +12,8 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
+import { disableHandoff, enableHandoff, operatorReply } from './services/liveChatService';
+import type { OperatorInfo } from './services/liveChatService';
 
 
 
@@ -25,6 +27,29 @@ app.use('/api/training', trainingRoutes);
 
 
 const PORT = process.env.PORT || 3008;
+const LIVECHAT_TOKEN = process.env.LIVECHAT_TOKEN || process.env.LIVECHAT_API_KEY || process.env.LIVECHAT_SECRET;
+
+const ensureAuthorized = (req: Request, res: Response): boolean => {
+  if (!LIVECHAT_TOKEN) {
+    res.status(500).json({ error: 'LIVECHAT_TOKEN no configurado' });
+    return false;
+  }
+
+  const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization : '';
+  const tokenFromAuth = authHeader.toLowerCase().startsWith('bearer ')
+    ? authHeader.slice(7).trim()
+    : authHeader.trim();
+
+  const apiKeyHeader = req.headers['x-api-key'];
+  const tokenFromHeader = Array.isArray(apiKeyHeader) ? apiKeyHeader[0] : apiKeyHeader;
+
+  if (tokenFromAuth === LIVECHAT_TOKEN || tokenFromHeader === LIVECHAT_TOKEN) {
+    return true;
+  }
+
+  res.status(401).json({ error: 'No autorizado' });
+  return false;
+};
 
 // ✅ GET para verificación inicial del webhook
 app.get("/webhook", (req, res) => {
@@ -136,6 +161,108 @@ const main = async () => {
   });
 
   // ✅ Envío manual desde consola (operador)
+  adapterProvider.server.post('/v1/live/enable', handleCtx(async (_bot, req, res) => {
+    if (!ensureAuthorized(req, res)) {
+      return;
+    }
+
+    const { number, operatorId, operatorName, reason, metadata } = req.body ?? {};
+
+    if (!number) {
+      res.status(400).json({ error: 'number es requerido' });
+      return;
+    }
+
+    try {
+      const operatorInfo: OperatorInfo | undefined = operatorId || operatorName
+        ? { id: operatorId ?? null, name: operatorName ?? null }
+        : undefined;
+
+      const metadataPayload = typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)
+        ? metadata as Record<string, unknown>
+        : undefined;
+
+      await enableHandoff({
+        userId: number,
+        operator: operatorInfo,
+        reason: reason ?? 'habilitado_por_operador',
+        metadata: metadataPayload,
+      });
+
+      res.json({ status: 'modoHumano_habilitado' });
+    } catch (error) {
+      console.error('❌ Error habilitando modo humano:', error);
+      res.status(500).json({ error: 'Error habilitando modo humano' });
+    }
+  }));
+
+  adapterProvider.server.post('/v1/live/disable', handleCtx(async (_bot, req, res) => {
+    if (!ensureAuthorized(req, res)) {
+      return;
+    }
+
+    const { number, operatorId, operatorName, reason } = req.body ?? {};
+
+    if (!number) {
+      res.status(400).json({ error: 'number es requerido' });
+      return;
+    }
+
+    try {
+      const operatorInfo: OperatorInfo | undefined = operatorId || operatorName
+        ? { id: operatorId ?? null, name: operatorName ?? null }
+        : undefined;
+
+      await disableHandoff({
+        userId: number,
+        operator: operatorInfo,
+        reason: reason ?? 'deshabilitado_por_operador',
+      });
+
+      res.json({ status: 'modoHumano_deshabilitado' });
+    } catch (error) {
+      console.error('❌ Error deshabilitando modo humano:', error);
+      res.status(500).json({ error: 'Error deshabilitando modo humano' });
+    }
+  }));
+
+  adapterProvider.server.post('/v1/live/reply', handleCtx(async (bot, req, res) => {
+    if (!ensureAuthorized(req, res)) {
+      return;
+    }
+
+    const { number, message, urlMedia, mediaType, operatorId, operatorName } = req.body ?? {};
+
+    if (!number) {
+      res.status(400).json({ error: 'number es requerido' });
+      return;
+    }
+
+    if (!message || typeof message !== 'string') {
+      res.status(400).json({ error: 'message es requerido y debe ser texto' });
+      return;
+    }
+
+    try {
+      await bot.sendMessage(number, message, {
+        media: urlMedia ?? null,
+      });
+
+      await operatorReply({
+        userId: number,
+        operator: { id: operatorId ?? null, name: operatorName ?? null },
+        message,
+        mediaUrl: urlMedia ?? null,
+        mediaType: mediaType ?? null,
+      });
+
+      res.json({ status: 'enviado' });
+    } catch (error) {
+      console.error('❌ Error enviando respuesta del operador:', error);
+      res.status(500).json({ error: 'Error enviando respuesta del operador' });
+    }
+  }));
+
   adapterProvider.server.post('/v1/messages', handleCtx(async (bot, req, res) => {
     const { number, message, urlMedia } = req.body;
 
