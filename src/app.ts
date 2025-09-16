@@ -3,7 +3,7 @@ import { createBot, createProvider } from '@builderbot/bot';
 import { MemoryDB as Database } from '@builderbot/bot';
 import { MetaProvider as Provider } from '@builderbot/provider-meta';
 import express from 'express';
-import cors from 'cors';
+import cors, { CorsOptions } from 'cors';
 import trainingRoutes from '../routes/trainingRoutes';
 import conversationRoutes from '../routes/conversationRoutes';
 import { main as flow } from './flows';
@@ -12,16 +12,43 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
+import { auditAccess, authenticateRequest } from './middleware/security';
 
 
 
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter((origin) => origin.length > 0);
+
+const corsOptions: CorsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    console.warn(`Solicitud bloqueada por CORS desde origen no autorizado: ${origin}`);
+    callback(new Error('Origen no autorizado por CORS'));
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Api-Key', 'X-Service-Token'],
+  exposedHeaders: ['X-Request-Id'],
+  credentials: true,
+  maxAge: 60 * 60,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
-app.use('/api/conversations', conversationRoutes);
-app.use('/api/training', trainingRoutes);
+app.use('/api/conversations', auditAccess, authenticateRequest, conversationRoutes);
+app.use('/api/training', auditAccess, authenticateRequest, trainingRoutes);
+app.use('/v1/live', auditAccess, authenticateRequest);
+app.use('/v1/catalog/reindex', auditAccess, authenticateRequest);
 
 
 const PORT = process.env.PORT || 3008;
@@ -134,6 +161,9 @@ const main = async () => {
     provider: adapterProvider,
     database: adapterDB,
   });
+
+  adapterProvider.server.use('/v1/live', auditAccess, authenticateRequest);
+  adapterProvider.server.use('/v1/catalog/reindex', auditAccess, authenticateRequest);
 
   // ✅ Envío manual desde consola (operador)
   adapterProvider.server.post('/v1/messages', handleCtx(async (bot, req, res) => {
