@@ -3,12 +3,13 @@
 // y proporciona respuestas automatizadas basadas en palabras clave y productos mencionados.
 import { addKeyword } from '@builderbot/bot';
 import { guardarCliente, obtenerCliente } from '../clienteService';
-import { answerWithPromptBase, buscarProductoChatbot } from '../services/aiService';
+import { answerWithPromptBase } from '../services/aiService';
 import { ensurePromptConfig, getPromptConfig } from '../services/promptManager';
 import { db } from '../firebaseConfig';
 import { guardarMensajeEnLiveChat, guardarConversacionEnHistorial } from '../services/chatLogger';
 import { extraerProductoDelMensaje } from '../utils/extraerProductoDelMensaje';
 import { getProductoDesdeXLSX } from '~/utils/getProductoDesdeXLSX';
+import { keywordMediaHook } from '../hooks/keywordMediaHook';
 
 // 🔧 Cargar mensajes desde Firestore y reemplazar {{nombre}} si aplica
 async function getMensaje(tipo: string, nombre?: string): Promise<string> {
@@ -116,16 +117,19 @@ const inteligenciaArtificialFlow = addKeyword([
     return;
   }
 
-  const productoChatbot = await buscarProductoChatbot(ctx.body);
-  if (productoChatbot) {
-    const mensaje = productoChatbot.respuesta || await getMensaje("recursoGenerico");
-    await guardarConversacionEnHistorial(ctx, mensaje, "bot");
+  const hookTriggered = await keywordMediaHook({
+    ctx,
+    flowDynamic,
+    getFallbackMessage: () => getMensaje("recursoGenerico"),
+    onDelivered: async ({ body }) => {
+      await guardarConversacionEnHistorial(ctx, body, "bot");
+    },
+  });
 
-    if (["pdf", "imagen", "video"].includes(productoChatbot.tipo)) {
-      await flowDynamic([{ body: mensaje, media: productoChatbot.url }]);
-    } else {
-      await flowDynamic(mensaje);
-    }
+  if (hookTriggered) {
+    console.info('[inteligenciaArtificialFlow] Catálogo activado', {
+      from: ctx.from,
+    });
   }
 
   const productoDetectado = extraerProductoDelMensaje(ctx.body);
@@ -164,6 +168,13 @@ const inteligenciaArtificialFlow = addKeyword([
         },
         { merge: true },
       );
+
+    console.info('[inteligenciaArtificialFlow] Respuesta IA enviada', {
+      from: ctx.from,
+      latencyMs: respuestaIA.latencyMs,
+      usedFallback: respuestaIA.usedFallback,
+      closingTriggered: respuestaIA.closingTriggered,
+    });
 
     if (respuestaIA.usedFallback) {
       console.warn('⚠️ Fallback IA utilizado para la última respuesta.');

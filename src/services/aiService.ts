@@ -332,23 +332,3 @@ export async function answerWithPromptBase(options: AnswerOptions): Promise<Answ
     : new Error('No se pudo obtener respuesta del modelo principal ni del fallback.');
 }
 
-export const buscarProductoChatbot = async (mensaje: string) => {
-  const snapshot = await db.collection('productos_chatbot').get();
-
-  for (const doc of snapshot.docs) {
-    const data = doc.data();
-    const keywords = Array.isArray(data.keyword) ? data.keyword : [data.keyword];
-    const match = keywords.some((palabra: string) =>
-      typeof palabra === 'string' && mensaje.toLowerCase().includes(palabra.toLowerCase()),
-    );
-    if (match) {
-      return {
-        respuesta: data.respuesta || '',
-        tipo: data.tipo || 'imagen',
-        url: data.url || '',
-      };
-    }
-  }
-
-  return null;
-};
