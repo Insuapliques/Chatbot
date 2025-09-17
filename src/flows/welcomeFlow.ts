@@ -3,7 +3,8 @@
 // y proporciona respuestas automatizadas basadas en palabras clave y productos mencionados.
 import { addKeyword } from '@builderbot/bot';
 import { guardarCliente, obtenerCliente } from '../clienteService';
-import { getChatGPTResponse, buscarProductoChatbot } from '../aiService';
+import { answerWithPromptBase, buscarProductoChatbot } from '../services/aiService';
+import { ensurePromptConfig, getPromptConfig } from '../services/promptManager';
 import { db } from '../firebaseConfig';
 import { guardarMensajeEnLiveChat, guardarConversacionEnHistorial } from '../services/chatLogger';
 import { extraerProductoDelMensaje } from '../utils/extraerProductoDelMensaje';
@@ -125,7 +126,6 @@ const inteligenciaArtificialFlow = addKeyword([
     } else {
       await flowDynamic(mensaje);
     }
-    return;
   }
 
   const productoDetectado = extraerProductoDelMensaje(ctx.body);
@@ -138,15 +138,54 @@ const inteligenciaArtificialFlow = addKeyword([
     }
   }
 
-  const { text: respuesta, isClosing } = await getChatGPTResponse(ctx.body);
-  await guardarConversacionEnHistorial(ctx, respuesta, "bot");
-  await flowDynamic(respuesta || "Lo siento, ¿puedes repetirlo de otra forma?");
-  await db.collection("liveChatStates").doc(ctx.from).set({ modoHumano: false }, { merge: true });
+  try {
+    await ensurePromptConfig();
+    const respuestaIA = await answerWithPromptBase({
+      conversationId: ctx.from,
+      userMessage: ctx.body,
+      contextMetadata: {
+        flow: 'inteligenciaArtificialFlow',
+      },
+    });
 
-  if (isClosing) {
-    const menu = await getMensaje("cierreMenuFinal");
-    await flowDynamic(menu);
-    await db.collection("liveChatStates").doc(ctx.from).set({ estado: "cierre" }, { merge: true });
+    const mensaje =
+      respuestaIA.text || "Lo siento, ¿puedes repetirlo de otra forma?";
+
+    await guardarConversacionEnHistorial(ctx, mensaje, "bot");
+    await flowDynamic(mensaje);
+    await db
+      .collection("liveChatStates")
+      .doc(ctx.from)
+      .set(
+        {
+          modoHumano: false,
+          lastAiLatencyMs: respuestaIA.latencyMs,
+          lastAiUsedFallback: respuestaIA.usedFallback,
+        },
+        { merge: true },
+      );
+
+    if (respuestaIA.usedFallback) {
+      console.warn('⚠️ Fallback IA utilizado para la última respuesta.');
+    }
+
+    if (respuestaIA.closingTriggered) {
+      const config = await getPromptConfig();
+      const cierre = respuestaIA.closingMenu || config.closingMenu;
+      if (cierre) {
+        await flowDynamic(cierre);
+      }
+      await db
+        .collection("liveChatStates")
+        .doc(ctx.from)
+        .set({ estado: "cierre" }, { merge: true });
+    }
+  } catch (error) {
+    console.error("❌ Error obteniendo respuesta IA:", error);
+    const fallbackMensaje =
+      "Ahora mismo no puedo responder. Por favor, intenta de nuevo en unos instantes.";
+    await guardarConversacionEnHistorial(ctx, fallbackMensaje, "bot");
+    await flowDynamic(fallbackMensaje);
   }
 });
 
