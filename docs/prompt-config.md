@@ -1,4 +1,3 @@
-# Prompt y parámetros IA en Firestore
 
 El servicio `promptManager` lee la configuración dinámica desde el documento definido en `FIRESTORE_PROMPT_DOC_PATH` (por defecto `settings/EntrenamientoConfig`).
 

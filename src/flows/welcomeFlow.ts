@@ -5,6 +5,9 @@ import { addKeyword } from '@builderbot/bot';
 import { guardarCliente, obtenerCliente } from '../clienteService';
 import { answerWithPromptBase, buscarProductoChatbot } from '../services/aiService';
 import { ensurePromptConfig, getPromptConfig } from '../services/promptManager';
+import { handleControlIntents } from '../middleware/intentCatalog';
+import { getState, markAsked } from '../services/stateManager';
+
 import { db } from '../firebaseConfig';
 import { guardarMensajeEnLiveChat, guardarConversacionEnHistorial } from '../services/chatLogger';
 import { extraerProductoDelMensaje } from '../utils/extraerProductoDelMensaje';
@@ -143,9 +146,7 @@ const inteligenciaArtificialFlow = addKeyword([
     const respuestaIA = await answerWithPromptBase({
       conversationId: ctx.from,
       userMessage: ctx.body,
-      contextMetadata: {
-        flow: 'inteligenciaArtificialFlow',
-      },
+      contextMetadata: { flow: 'inteligenciaArtificialFlow', state: __state.state || undefined, has_sent_catalog: !!__state.has_sent_catalog, last_intent: __state.last_intent || undefined },
     });
 
     const mensaje =
