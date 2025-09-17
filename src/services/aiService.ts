@@ -33,6 +33,10 @@ const FALLBACK_COOLDOWN_MS = Number(
   process.env.LLM_FALLBACK_COOLDOWN_MS ?? 60_000,
 );
 
+const CATALOG_COLLECTION = 'catalog_index';
+const MAX_CATALOG_MATCHES = Number(process.env.LLM_CATALOG_MAX_MATCHES ?? 3);
+const VERSION_PATTERN = /^(\d{4})-(\d{2})$/;
+
 interface FallbackState {
   failureCount: number;
   openUntil: number;
@@ -106,6 +110,261 @@ function buildMetadata(options: AnswerOptions): PrimitiveRecord | undefined {
     }
   }
   return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => normalizeStringArray(item));
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(/[;,\n\r|]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return [String(value)];
+  }
+  return [];
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const lowered = value.toLowerCase();
+    if (!seen.has(lowered)) {
+      seen.add(lowered);
+      result.push(value);
+    }
+  }
+  return result;
+}
+
+function extractContextIntents(metadata?: MetadataInput): string[] {
+  if (!metadata) {
+    return [];
+  }
+  const intents: string[] = [];
+  for (const [key, value] of Object.entries(metadata)) {
+    if (typeof value === 'undefined' || value === null) {
+      continue;
+    }
+    if (key.toLowerCase().includes('intent')) {
+      intents.push(...normalizeStringArray(value));
+    }
+  }
+  return uniqueStrings(intents);
+}
+
+function pickStringField(
+  data: Record<string, unknown>,
+  candidateKeys: string[],
+): string | undefined {
+  for (const candidate of candidateKeys) {
+    const direct = data[candidate];
+    if (typeof direct === 'string' && direct.trim()) {
+      return direct.trim();
+    }
+  }
+  const loweredCandidates = candidateKeys.map((key) => key.toLowerCase());
+  for (const [key, value] of Object.entries(data)) {
+    if (loweredCandidates.includes(key.toLowerCase()) && typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function collectFieldValues(
+  data: Record<string, unknown>,
+  keyFragments: string[],
+): string[] {
+  const values: string[] = [];
+  for (const [key, value] of Object.entries(data)) {
+    const loweredKey = key.toLowerCase();
+    if (keyFragments.some((fragment) => loweredKey.includes(fragment))) {
+      values.push(...normalizeStringArray(value));
+    }
+  }
+  return uniqueStrings(values);
+}
+
+function normalizeVersion(value?: string): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const match = trimmed.match(/(\d{4})[-_.\s/]?(\d{1,2})/);
+  if (!match) {
+    return undefined;
+  }
+  const monthNumber = Number.parseInt(match[2] ?? '', 10);
+  if (!Number.isFinite(monthNumber) || monthNumber < 1 || monthNumber > 12) {
+    return undefined;
+  }
+  const month = String(monthNumber).padStart(2, '0');
+  return `${match[1]}-${month}`;
+}
+
+function truncateSummary(text: string | undefined, maxLength = 280): string | undefined {
+  if (!text) {
+    return undefined;
+  }
+  const trimmed = text.trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+interface CatalogMatch {
+  title: string;
+  displayVersion?: string;
+  normalizedVersion?: string;
+  summary?: string;
+  matchedKeywords: string[];
+  matchedIntents: string[];
+  score: number;
+}
+
+interface CatalogPromptContext {
+  addition: string;
+  normalizedVersion?: string;
+}
+
+async function buildCatalogPromptContext(
+  userMessage: string,
+  metadata?: MetadataInput,
+): Promise<CatalogPromptContext | null> {
+  const lowerMessage = userMessage.toLowerCase();
+  const requestedIntents = extractContextIntents(metadata).map((intent) => intent.toLowerCase());
+  try {
+    const snapshot = await db.collection(CATALOG_COLLECTION).get();
+    const docs = Array.isArray(snapshot?.docs) ? snapshot.docs : [];
+    if (!docs.length) {
+      return null;
+    }
+    const matches: CatalogMatch[] = [];
+    for (const doc of docs) {
+      const rawData = typeof doc.data === 'function' ? doc.data() : undefined;
+      if (!rawData || typeof rawData !== 'object') {
+        continue;
+      }
+      const data = rawData as Record<string, unknown>;
+      const title =
+        pickStringField(data, ['title', 'titulo', 'name', 'nombre']) ?? doc.id ?? 'Recurso del catálogo';
+      const versionCandidate =
+        pickStringField(data, [
+          'version',
+          'versión',
+          'catalogVersion',
+          'versionCatalogo',
+          'version_catalogo',
+          'catalogoVersion',
+        ]) ?? doc.id;
+      const normalizedVersion = normalizeVersion(typeof versionCandidate === 'string' ? versionCandidate : undefined);
+      const displayVersion = normalizedVersion ??
+        (typeof versionCandidate === 'string' && versionCandidate.trim() ? versionCandidate.trim() : undefined);
+      const summaries =
+        pickStringField(data, ['summary', 'resumen', 'descripcion', 'description', 'detalle']) ?? undefined;
+      const summary = truncateSummary(summaries);
+      const keywords = collectFieldValues(data, ['keyword', 'palabra', 'tag']);
+      const intents = collectFieldValues(data, ['intent']);
+      const matchedKeywords = keywords.filter((keyword) =>
+        lowerMessage.includes(keyword.toLowerCase()),
+      );
+      const matchedIntents = intents.filter((intent) =>
+        requestedIntents.includes(intent.toLowerCase()),
+      );
+      const score = matchedKeywords.length + (matchedIntents.length > 0 ? 2 : 0);
+      if (score > 0) {
+        matches.push({
+          title,
+          displayVersion,
+          normalizedVersion,
+          summary,
+          matchedKeywords,
+          matchedIntents,
+          score,
+        });
+      }
+    }
+    if (!matches.length) {
+      return null;
+    }
+    matches.sort((a, b) => b.score - a.score);
+    const selected = matches.slice(0, Math.max(1, Math.min(MAX_CATALOG_MATCHES, matches.length)));
+    const lines = selected.map((match, index) => {
+      const parts: string[] = [];
+      const ordinal = `${index + 1}. ${match.title}`;
+      const withVersion = match.displayVersion ? `${ordinal} (versión ${match.displayVersion})` : ordinal;
+      parts.push(withVersion);
+      if (match.summary) {
+        parts.push(`Resumen: ${match.summary}`);
+      }
+      const reasons: string[] = [];
+      if (match.matchedIntents.length) {
+        reasons.push(`intención ${match.matchedIntents.join(', ')}`);
+      }
+      if (match.matchedKeywords.length) {
+        reasons.push(`palabras clave ${match.matchedKeywords.join(', ')}`);
+      }
+      if (reasons.length) {
+        parts.push(`Coincidencia por ${reasons.join(' y ')}.`);
+      }
+      return parts.join(' ');
+    });
+    const header = 'Referencias relevantes del catálogo disponibles para esta consulta:';
+    const instruction =
+      'Utiliza estas referencias y cita explícitamente la versión correspondiente como "(Catálogo vAAAA-MM)" en tu respuesta.';
+    const addition = `${header}\n${lines.join('\n')}\n${instruction}`;
+    const normalizedVersion = selected.find((match) => match.normalizedVersion)?.normalizedVersion;
+    return { addition, normalizedVersion };
+  } catch (error) {
+    console.warn('[aiService] No fue posible consultar el índice del catálogo:', error);
+    return null;
+  }
+}
+
+function appendCatalogContext(message: string, addition?: string): string {
+  if (!addition) {
+    return message;
+  }
+  const sanitizedAddition = sanitizeMessage(addition);
+  if (!sanitizedAddition) {
+    return message;
+  }
+  if (message.length >= MAX_INPUT_LENGTH) {
+    return message;
+  }
+  const available = MAX_INPUT_LENGTH - message.length - 2;
+  if (available <= 0) {
+    return message;
+  }
+  const trimmedAddition = sanitizedAddition.slice(0, available);
+  return `${message}\n\n${trimmedAddition}`;
+}
+
+function ensureCatalogCitation(text: string, normalizedVersion?: string): string {
+  if (!normalizedVersion || !VERSION_PATTERN.test(normalizedVersion)) {
+    return text;
+  }
+  const citation = `(Catálogo v${normalizedVersion})`;
+  if (!text) {
+    return citation;
+  }
+  if (text.includes(citation)) {
+    return text;
+  }
+  const trimmed = text.trimEnd();
+  const trailingWhitespace = text.slice(trimmed.length);
+  const needsSpace = trimmed.length > 0 && !/\s$/.test(trimmed);
+  const augmented = `${trimmed}${needsSpace ? ' ' : ''}${citation}`;
+  return `${augmented}${trailingWhitespace}`;
 }
 
 function emitAiMetrics(payload: {
@@ -271,6 +530,11 @@ export async function answerWithPromptBase(options: AnswerOptions): Promise<Answ
   const start = Date.now();
   let lastError: unknown;
   const metadata = buildMetadata(options);
+  const catalogContext = await buildCatalogPromptContext(sanitizedMessage, options.contextMetadata);
+  const messageWithCatalog = appendCatalogContext(
+    sanitizedMessage,
+    catalogContext?.addition,
+  );
   await ensurePromptConfig();
   let streamingWarned = false;
 
@@ -283,13 +547,14 @@ export async function answerWithPromptBase(options: AnswerOptions): Promise<Answ
       }
       const openAiResult = await callOpenAI(
         config,
-        sanitizedMessage,
+        messageWithCatalog,
         metadata,
         attempt + 1,
       );
-      const closingTriggered = shouldAppendClosing(openAiResult.text);
+      const finalText = ensureCatalogCitation(openAiResult.text, catalogContext?.normalizedVersion);
+      const closingTriggered = shouldAppendClosing(finalText);
       return {
-        text: openAiResult.text,
+        text: finalText,
         closingTriggered,
         closingMenu: closingTriggered ? config.closingMenu : undefined,
         latencyMs: Date.now() - start,
@@ -310,12 +575,13 @@ export async function answerWithPromptBase(options: AnswerOptions): Promise<Answ
     try {
       const config = await getPromptConfig();
       const fallbackResult = await callFallbackLLM(
-        `${config.promptBase}\n\nUsuario: ${sanitizedMessage}`,
+        `${config.promptBase}\n\nUsuario: ${messageWithCatalog}`,
       );
       registerFallbackSuccess();
-      const closingTriggered = shouldAppendClosing(fallbackResult.text);
+      const finalText = ensureCatalogCitation(fallbackResult.text, catalogContext?.normalizedVersion);
+      const closingTriggered = shouldAppendClosing(finalText);
       return {
-        text: fallbackResult.text,
+        text: finalText,
         closingTriggered,
         closingMenu: closingTriggered ? config.closingMenu : undefined,
         latencyMs: Date.now() - start,
