@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import type { ResponseCreateParamsNonStreaming } from 'openai/resources/responses/responses';
 import type { PromptConfig } from './promptManager';
 import { ensurePromptConfig, getPromptConfig, shouldAppendClosing } from './promptManager';
 import { db } from '../firebaseConfig';
@@ -410,22 +411,36 @@ async function callOpenAI(
 
   try {
     const client = getOpenAI();
-    const response = await client.responses.create(
-      {
-        model: DEFAULT_MODEL,
-        input: [
-          { role: 'system', content: config.promptBase },
-          { role: 'user', content: sanitizedMessage },
-        ],
-        temperature: config.params.temperature,
-        top_p: config.params.top_p,
-        presence_penalty: config.params.presence_penalty,
-        frequency_penalty: config.params.frequency_penalty,
-        max_output_tokens: config.params.max_tokens,
-        metadata,
-      },
-      { signal: controller.signal },
-    );
+    const request: ResponseCreateParamsNonStreaming = {
+      model: DEFAULT_MODEL,
+      input: [
+        { role: 'system', content: config.promptBase },
+        { role: 'user', content: sanitizedMessage },
+      ],
+    };
+
+    const { temperature, top_p, max_tokens } = config.params;
+
+    if (typeof temperature === 'number') {
+      request.temperature = temperature;
+    }
+    if (typeof top_p === 'number') {
+      request.top_p = top_p;
+    }
+    if (typeof max_tokens === 'number') {
+      request.max_output_tokens = max_tokens;
+    }
+
+    // The Responses API currently ignores presence/frequency penalties, so these
+    // parameters are intentionally not forwarded. If we migrate to an endpoint
+    // that supports them, map `config.params.presence_penalty` and
+    // `config.params.frequency_penalty` conditionally at that time.
+
+    if (metadata) {
+      request.metadata = metadata;
+    }
+
+    const response = await client.responses.create(request, { signal: controller.signal });
 
     const text = (response.output_text ?? '').trim();
     const tokens = response.usage?.total_tokens ?? undefined;
