@@ -6,6 +6,7 @@ import express from 'express';
 import cors, { CorsOptions } from 'cors';
 import trainingRoutes from '../routes/trainingRoutes';
 import conversationRoutes from '../routes/conversationRoutes';
+import catalogRoutes from '../routes/catalog';
 import { main as flow } from './flows';
 import { db } from './firebaseConfig';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -48,7 +49,7 @@ app.use(express.json());
 app.use('/api/conversations', auditAccess, authenticateRequest, conversationRoutes);
 app.use('/api/training', auditAccess, authenticateRequest, trainingRoutes);
 app.use('/v1/live', auditAccess, authenticateRequest);
-app.use('/v1/catalog/reindex', auditAccess, authenticateRequest);
+app.use('/v1/catalog', auditAccess, authenticateRequest, catalogRoutes);
 
 
 const PORT = process.env.PORT || 3008;
@@ -163,7 +164,7 @@ const main = async () => {
   });
 
   adapterProvider.server.use('/v1/live', auditAccess, authenticateRequest);
-  adapterProvider.server.use('/v1/catalog/reindex', auditAccess, authenticateRequest);
+  adapterProvider.server.use('/v1/catalog', auditAccess, authenticateRequest, catalogRoutes);
 
   // ✅ Envío manual desde consola (operador)
   adapterProvider.server.post('/v1/messages', handleCtx(async (bot, req, res) => {
