@@ -8,6 +8,7 @@
     "build": "npx rollup -c",
     "dev": "nodemon ./src/app.ts",
     "lint": "eslint . --no-ignore",
+    "test": "vitest run",
     "test:ai": "tsx scripts/test-ai.ts"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "rollup": "^4.10.0",
     "rollup-plugin-typescript2": "^0.36.0",
     "tsx": "^4.7.1",
-    "typescript": "^5.4.3"
+    "typescript": "^5.4.3",
+    "vitest": "^1.6.0"
   }
 }
