@@ -428,7 +428,7 @@ async function callOpenAI(
       ],
     };
 
-    const { temperature, top_p, max_tokens } = config.params;
+    const { temperature, top_p, max_tokens } = config.params ?? {};
 
     if (typeof temperature === 'number') {
       if (modelSupportsTemperature(DEFAULT_MODEL)) {

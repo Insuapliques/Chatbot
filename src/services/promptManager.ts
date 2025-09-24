@@ -18,8 +18,7 @@ export interface PromptConfig {
   timeoutMs?: number;
 }
 
-const DEFAULT_DOC_PATH =
-  process.env.FIRESTORE_PROMPT_DOC_PATH ?? 'settings/EntrenamientoConfig';
+const DEFAULT_DOC_PATH = process.env.FIRESTORE_PROMPT_DOC_PATH ?? 'settings/prompts';
 
 const DEFAULT_CONFIG: PromptConfig = {
   promptBase:
@@ -42,22 +41,18 @@ let initialized = false;
 let unsubscribe: (() => void) | null = null;
 let initializingPromise: Promise<void> | null = null;
 
-function getDefaultDocPayload(): Record<string, unknown> {
-  const payload: Record<string, unknown> = {
-    promptBase: DEFAULT_CONFIG.promptBase,
-    closingWords: DEFAULT_CONFIG.closingWords,
-    stream: DEFAULT_CONFIG.stream,
-    timeoutMs: DEFAULT_CONFIG.timeoutMs,
-    temperature: DEFAULT_CONFIG.params.temperature,
-    max_tokens: DEFAULT_CONFIG.params.max_tokens,
-    top_p: DEFAULT_CONFIG.params.top_p,
-    presence_penalty: DEFAULT_CONFIG.params.presence_penalty,
-    frequency_penalty: DEFAULT_CONFIG.params.frequency_penalty,
-  };
-  if (DEFAULT_CONFIG.closingMenu) {
-    payload.closingMenu = DEFAULT_CONFIG.closingMenu;
+function extractPromptBase(data: DocumentData | undefined): string {
+  if (!data) {
+    return DEFAULT_CONFIG.promptBase;
   }
-  return payload;
+  const candidateKeys = ['promptBase', 'prompt_base', 'entrenamiento_base'];
+  for (const key of candidateKeys) {
+    const value = data[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return DEFAULT_CONFIG.promptBase;
 }
 
 function toNumber(value: unknown): number | undefined {
@@ -81,10 +76,7 @@ function normalizeSnapshot(snapshot?: DocumentSnapshot<DocumentData>): PromptCon
   const nestedParams =
     typeof data.params === 'object' && data.params !== null ? data.params : {};
 
-  const promptBase =
-    typeof data.promptBase === 'string' && data.promptBase.trim().length > 0
-      ? data.promptBase
-      : DEFAULT_CONFIG.promptBase;
+  const promptBase = extractPromptBase(data);
 
   const closingWords: string[] = Array.isArray(data.closingWords)
     ? data.closingWords.filter((word) => typeof word === 'string' && word.trim())
@@ -140,15 +132,25 @@ function setCachedConfig(config: PromptConfig): void {
 
 async function setupSnapshotListener(): Promise<void> {
   const docRef = db.doc(DEFAULT_DOC_PATH);
-  let snapshot = await docRef.get();
+  const snapshot = await docRef.get();
+
   if (!snapshot.exists) {
-    await docRef.set(getDefaultDocPayload(), { merge: true });
-    snapshot = await docRef.get();
+    console.warn(
+      `[promptManager] Documento ${DEFAULT_DOC_PATH} no encontrado en Firestore; se usará la configuración por defecto.`,
+    );
+    setCachedConfig({ ...DEFAULT_CONFIG });
+  } else {
+    setCachedConfig(normalizeSnapshot(snapshot));
   }
 
-  setCachedConfig(normalizeSnapshot(snapshot));
-
   unsubscribe = docRef.onSnapshot((snap) => {
+    if (!snap.exists) {
+      console.warn(
+        `[promptManager] Documento ${DEFAULT_DOC_PATH} no encontrado en Firestore; se usará la configuración por defecto.`,
+      );
+      setCachedConfig({ ...DEFAULT_CONFIG });
+      return;
+    }
     setCachedConfig(normalizeSnapshot(snap));
   });
 }
