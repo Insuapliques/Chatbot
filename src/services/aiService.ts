@@ -34,6 +34,15 @@ const FALLBACK_COOLDOWN_MS = Number(
   process.env.LLM_FALLBACK_COOLDOWN_MS ?? 60_000,
 );
 
+const TEMPERATURE_UNSUPPORTED_MODELS = new Set([
+  'gpt-5',
+  'gpt-5-latest',
+]);
+
+function modelSupportsTemperature(model: string): boolean {
+  return !TEMPERATURE_UNSUPPORTED_MODELS.has(model);
+}
+
 const CATALOG_COLLECTION = 'catalog_index';
 const MAX_CATALOG_MATCHES = Number(process.env.LLM_CATALOG_MAX_MATCHES ?? 3);
 const VERSION_PATTERN = /^(\d{4})-(\d{2})$/;
@@ -422,7 +431,13 @@ async function callOpenAI(
     const { temperature, top_p, max_tokens } = config.params;
 
     if (typeof temperature === 'number') {
-      request.temperature = temperature;
+      if (modelSupportsTemperature(DEFAULT_MODEL)) {
+        request.temperature = temperature;
+      } else {
+        console.warn(
+          `[aiService] Temperatura configurada (${temperature}) ignorada: el modelo ${DEFAULT_MODEL} no admite este parámetro.`,
+        );
+      }
     }
     if (typeof top_p === 'number') {
       request.top_p = top_p;
