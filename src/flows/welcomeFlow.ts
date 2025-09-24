@@ -6,7 +6,7 @@ import { guardarCliente, obtenerCliente } from '../clienteService';
 import { answerWithPromptBase, buscarProductoChatbot } from '../services/aiService';
 import { ensurePromptConfig, getPromptConfig } from '../services/promptManager';
 import { handleControlIntents } from '../middleware/intentCatalog';
-import { getState, markAsked } from '../services/stateManager';
+import { getState } from '../services/stateManager';
 
 import { db } from '../firebaseConfig';
 import { guardarMensajeEnLiveChat, guardarConversacionEnHistorial } from '../services/chatLogger';
@@ -143,10 +143,16 @@ const inteligenciaArtificialFlow = addKeyword([
 
   try {
     await ensurePromptConfig();
+    const state = await getState(ctx.from);
     const respuestaIA = await answerWithPromptBase({
       conversationId: ctx.from,
       userMessage: ctx.body,
-      contextMetadata: { flow: 'inteligenciaArtificialFlow', state: __state.state || undefined, has_sent_catalog: !!__state.has_sent_catalog, last_intent: __state.last_intent || undefined },
+      contextMetadata: {
+        flow: 'inteligenciaArtificialFlow',
+        state: state?.state || undefined,
+        has_sent_catalog: !!state?.has_sent_catalog,
+        last_intent: state?.last_intent || undefined,
+      },
     });
 
     const mensaje =
