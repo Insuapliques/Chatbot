@@ -9,7 +9,7 @@ import conversationRoutes from '../routes/conversationRoutes';
 import userRoutes from '../routes/userRoutes';
 import { main as flow } from './flows';
 import { db } from './firebaseConfig';
-import { FieldValue } from 'firebase-admin/firestore';
+import
 import { getStorage } from 'firebase-admin/storage';
 import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
@@ -59,7 +59,7 @@ const PORT = process.env.PORT || 3008;
 app.get("/webhook", (req, res) => {
   const verifyToken = process.env.verifyToken || "webhooksecret123";
   const mode = req.query["hub.mode"];
-  app.use('/api/users', auditAccess, authenticateRequest, userRoutes);
+  
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
