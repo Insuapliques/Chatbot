@@ -1,14 +1,15 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "declaration": false,
     "declarationMap": false,
-    "moduleResolution": "node",
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "sourceMap": false,
     "outDir": "./dist",
     "baseUrl": "./",
@@ -19,7 +20,7 @@
       "~/*": ["src/*"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*.ts", "routes/**/*.ts"],
   "exclude": [
     "node_modules",
     "dist",

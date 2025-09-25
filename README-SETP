@@ -1,0 +1,53 @@
+# Deployment & Build Notes
+
+## Required Environment Variables
+- `OPENAI_API_KEY` – OpenAI access token.
+- `LLM_MODEL` – Defaults to `gpt-5` but can be overridden.
+- `MEMORY_TOP_K` / `MEMORY_CONSENT_DEFAULT` – Memory knobs (defaults already defined in `.env.example`).
+- `ALLOWED_ORIGINS` – Comma-separated whitelist for CORS.
+- `GOOGLE_SERVICE_ACCOUNT` – JSON string with `project_id`, `client_email`, `private_key`, and optional `storageBucket`. Prefer this over legacy `FIREBASE_*` variables.
+- `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `FIREBASE_STORAGE_BUCKET` – Legacy fallback if `GOOGLE_SERVICE_ACCOUNT` is not set.
+- `GOOGLE_APPLICATION_CREDENTIALS` – Optional path for Application Default Credentials (only if not using the JSON env var).
+- `PORT` – HTTP port (defaults to `3008`; Docker image exposes `8000`).
+
+## Local Commands (pnpm)
+```bash
+pnpm install
+pnpm run build      # Rollup + ESM bundle (default)
+pnpm start          # Runs node dist/app.js
+```
+
+### Optional: Pure TypeScript Emit
+```bash
+pnpm run build:tsc
+node --experimental-specifier-resolution=node dist/src/app.js
+```
+Pros: keeps tree unbundled for debugging. Cons: requires the Node flag above (or updating import specifiers with `.js` extensions), larger output.
+
+## Docker Workflow
+```bash
+docker build -t chatbot-app .
+docker run --rm -p 8000:8000 \
+  -e PORT=8000 \
+  -e OPENAI_API_KEY=... \
+  -e GOOGLE_SERVICE_ACCOUNT='{"project_id":"..."}' \
+  chatbot-app
+```
+
+## Railway Notes
+- Use the provided `Dockerfile` as the deploy target (Railway auto-detects).
+- Define the environment variables listed above in the Railway dashboard. For JSON values, paste the entire string (Railway masks secrets).
+- Set `PORT=8000` (matches the container `EXPOSE`).
+- When using Application Default Credentials, upload the service account JSON to Railway variables and reference via `GOOGLE_SERVICE_ACCOUNT`.
+
+## Firebase Admin Credentials
+The app initialises Firebase Admin via `GOOGLE_SERVICE_ACCOUNT`. Example value:
+```json
+{
+  "project_id": "my-project",
+  "client_email": "firebase-adminsdk@my-project.iam.gserviceaccount.com",
+  "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+  "storageBucket": "my-project.appspot.com"
+}
+```
+If you rely on `GOOGLE_APPLICATION_CREDENTIALS`, ensure the referenced file is mounted inside the container and Railway deployment has access permissions.
