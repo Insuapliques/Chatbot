@@ -149,9 +149,10 @@ const inteligenciaArtificialFlow = addKeyword([
       userMessage: ctx.body,
       contextMetadata: {
         flow: 'inteligenciaArtificialFlow',
-        state: state?.state || undefined,
-        has_sent_catalog: !!state?.has_sent_catalog,
-        last_intent: state?.last_intent || undefined,
+        state: state?.state ?? estado?.state ?? undefined,
+        has_sent_catalog: Boolean(state?.has_sent_catalog ?? estado?.has_sent_catalog),
+        last_intent: state?.last_intent ?? estado?.last_intent ?? undefined,
+        userId: ctx.from,
       },
     });
 
