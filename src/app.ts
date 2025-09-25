@@ -1,4 +1,4 @@
-import * as dotenv from 'dotenv';
+import 'dotenv/config';
 import { createBot, createProvider } from '@builderbot/bot';
 import { MemoryDB as Database } from '@builderbot/bot';
 import { MetaProvider as Provider } from '@builderbot/provider-meta';
@@ -14,10 +14,6 @@ import { getStorage } from 'firebase-admin/storage';
 import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
 import { auditAccess, authenticateRequest } from './middleware/security';
-
-
-
-dotenv.config();
 
 const app = express();
 

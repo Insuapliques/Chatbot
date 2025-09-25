@@ -1,16 +1,22 @@
 {
   "name": "base-bailey-json",
   "version": "1.0.0",
-  "main": "dist/app.js",
   "type": "module",
+  "main": "dist/app.js",
+  "module": "dist/app.js",
+  "exports": {
+    ".": "./dist/app.js"
+  },
   "scripts": {
     "start": "node dist/app.js",
-    "build": "npx rollup -c",
-    "dev": "nodemon ./src/app.ts",
+    "build": "rollup -c",
+    "build:tsc": "tsc -p tsconfig.tsc.json",
+    "dev": "tsx watch src/app.ts",
     "lint": "eslint . --no-ignore",
     "test": "vitest run",
     "test:ai": "tsx scripts/test-ai.ts"
   },
+  "packageManager": "pnpm@9.12.2",
   "dependencies": {
     "@builderbot/bot": "^1.2.5",
     "@builderbot/provider-meta": "^1.2.5",

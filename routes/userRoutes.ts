@@ -3,22 +3,34 @@ import { db } from "../src/firebaseConfig";
 
 const router = Router();
 
-router.delete("/:userId/memories", async (req, res) => {
+// DELETE /api/users/:userId/memories
+router.delete("/:userId/memories", async (req, res): Promise<void> => {
   const { userId } = req.params;
-  if (!userId) return res.status(400).json({ error: "userId requerido" });
+  if (!userId) {
+    res.status(400).json({ error: "userId requerido" });
+    return;
+  }
+
   try {
     const userDoc = db.collection("users").doc(userId);
     const userSnap = await userDoc.get();
-    if (userSnap.exists) await userDoc.delete();
+    if (userSnap.exists) {
+      await userDoc.delete();
+    }
 
-    const memSnap = await db.collection("user_memories").where("userId", "==", userId).get();
+    const memSnap = await db
+      .collection("user_memories")
+      .where("userId", "==", userId)
+      .get();
+
     const batch = db.batch();
-    memSnap.docs.forEach((d) => batch.delete(d.ref));
+    memSnap.forEach((doc) => batch.delete(doc.ref));
     await batch.commit();
 
-    return res.json({ ok: true, deletedMemories: memSnap.size });
-  } catch (e: any) {
-    return res.status(500).json({ error: e?.message || "Error borrando memorias" });
+    res.json({ ok: true, deleted: memSnap.size });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "No se pudo eliminar la memoria del usuario" });
   }
 });
 
