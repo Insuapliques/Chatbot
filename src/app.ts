@@ -6,6 +6,7 @@ import express from 'express';
 import cors, { CorsOptions } from 'cors';
 import trainingRoutes from '../routes/trainingRoutes';
 import conversationRoutes from '../routes/conversationRoutes';
+import userRoutes from '../routes/userRoutes';
 import { main as flow } from './flows';
 import { db } from './firebaseConfig';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -47,6 +48,7 @@ app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use('/api/conversations', auditAccess, authenticateRequest, conversationRoutes);
 app.use('/api/training', auditAccess, authenticateRequest, trainingRoutes);
+app.use('/api/users', auditAccess, authenticateRequest, userRoutes);
 app.use('/v1/live', auditAccess, authenticateRequest);
 app.use('/v1/catalog/reindex', auditAccess, authenticateRequest);
 
@@ -57,6 +59,7 @@ const PORT = process.env.PORT || 3008;
 app.get("/webhook", (req, res) => {
   const verifyToken = process.env.verifyToken || "webhooksecret123";
   const mode = req.query["hub.mode"];
+  app.use('/api/users', auditAccess, authenticateRequest, userRoutes);
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
