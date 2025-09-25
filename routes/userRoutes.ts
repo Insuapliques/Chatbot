@@ -3,7 +3,7 @@ import { db } from "../src/firebaseConfig";
 
 const router = Router();
 
-router.delete("/api/users/:userId/memories", async (req, res) => {
+router.delete("/:userId/memories", async (req, res) => {
   const { userId } = req.params;
   if (!userId) return res.status(400).json({ error: "userId requerido" });
   try {
