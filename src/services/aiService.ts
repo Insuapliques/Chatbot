@@ -558,12 +558,20 @@ async function callOpenAI(
     };
 
     const { temperature, top_p, max_tokens } = config.params;
+    const modelId = typeof request.model === 'string' ? request.model.toLowerCase() : '';
+    const supportsSamplingParams = !modelId.startsWith('gpt-5');
 
-    if (typeof temperature === 'number') {
-      request.temperature = temperature;
-    }
-    if (typeof top_p === 'number') {
-      request.top_p = top_p;
+    if (supportsSamplingParams) {
+      if (typeof temperature === 'number') {
+        request.temperature = temperature;
+      }
+      if (typeof top_p === 'number') {
+        request.top_p = top_p;
+      }
+    } else if (typeof temperature === 'number' || typeof top_p === 'number') {
+      console.warn(
+        `[aiService] Parámetros de muestreo (temperature/top_p) ignorados para el modelo ${request.model}.`,
+      );
     }
     if (typeof max_tokens === 'number') {
       request.max_output_tokens = max_tokens;
