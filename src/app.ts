@@ -9,7 +9,7 @@ import conversationRoutes from '../routes/conversationRoutes';
 import userRoutes from '../routes/userRoutes';
 import { main as flow } from './flows';
 import { db } from './firebaseConfig';
-import
+import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
