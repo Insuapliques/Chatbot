@@ -1,5 +1,5 @@
-import { buscarProductoChatbot } from '../services/aiService';
-import { getState, updateState } from '../services/stateManager';
+import { buscarProductoChatbot } from '../services/aiService.js';
+import { getState, updateState } from '../services/stateManager.js';
 
 const CATALOG_TRIGGERS = [
   'catálogo', 'catalogo', 'combo', 'combos', 'productos', 'lista', 'muestr', 'ver catálogo', 'ver catalogo',

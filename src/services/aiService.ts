@@ -1,10 +1,10 @@
 import OpenAI from 'openai';
 import type { ResponseCreateParamsNonStreaming } from 'openai/resources/responses/responses';
-import type { PromptConfig } from './promptManager';
-import { ensurePromptConfig, getPromptConfig, shouldAppendClosing } from './promptManager';
-import { db } from '../firebaseConfig';
+import type { PromptConfig } from './promptManager.js';
+import { ensurePromptConfig, getPromptConfig, shouldAppendClosing } from './promptManager.js';
+import { db } from '../firebaseConfig.js';
 import { FieldValue } from 'firebase-admin/firestore';
-import { extractMemoryCandidates, shouldRemember } from './memoryExtractor';
+import { extractMemoryCandidates, shouldRemember } from './memoryExtractor.js';
 
 type PrimitiveRecord = Record<string, string>;
 type MetadataInput = Record<string, string | number | boolean | null>;

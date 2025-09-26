@@ -1,6 +1,6 @@
 import express from "express";
 import { z } from "zod";
-import { db } from "../src/firebaseConfig";
+import { db } from "../src/firebaseConfig.js";
 
 const saveConversationSchema = z.object({
     userMessage: z.string().min(1, "El mensaje del usuario es obligatorio"),

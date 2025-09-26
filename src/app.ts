@@ -4,16 +4,16 @@ import { MemoryDB as Database } from '@builderbot/bot';
 import { MetaProvider as Provider } from '@builderbot/provider-meta';
 import express from 'express';
 import cors, { CorsOptions } from 'cors';
-import trainingRoutes from '../routes/trainingRoutes';
-import conversationRoutes from '../routes/conversationRoutes';
-import userRoutes from '../routes/userRoutes';
-import { main as flow } from './flows';
-import { db } from './firebaseConfig';
+import trainingRoutes from '../routes/trainingRoutes.js';
+import conversationRoutes from '../routes/conversationRoutes.js';
+import userRoutes from '../routes/userRoutes.js';
+import { main as flow } from './flows.js';
+import { db } from './firebaseConfig.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
-import { auditAccess, authenticateRequest } from './middleware/security';
+import { auditAccess, authenticateRequest } from './middleware/security.js';
 
 const app = express();
 

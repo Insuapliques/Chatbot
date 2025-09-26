@@ -1,6 +1,6 @@
 import express from "express";
 import { z } from "zod";
-import { db } from "../src/firebaseConfig";
+import { db } from "../src/firebaseConfig.js";
 
 const router = express.Router();
 const collectionName = "training";

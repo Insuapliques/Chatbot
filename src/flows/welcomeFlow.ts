@@ -2,16 +2,16 @@
 // que maneja la interacción inicial con el usuario, registra su nombre,
 // y proporciona respuestas automatizadas basadas en palabras clave y productos mencionados.
 import { addKeyword } from '@builderbot/bot';
-import { guardarCliente, obtenerCliente } from '../clienteService';
-import { answerWithPromptBase, buscarProductoChatbot } from '../services/aiService';
-import { ensurePromptConfig, getPromptConfig } from '../services/promptManager';
-import { handleControlIntents } from '../middleware/intentCatalog';
-import { getState } from '../services/stateManager';
+import { guardarCliente, obtenerCliente } from '../clienteService.js';
+import { answerWithPromptBase, buscarProductoChatbot } from '../services/aiService.js';
+import { ensurePromptConfig, getPromptConfig } from '../services/promptManager.js';
+import { handleControlIntents } from '../middleware/intentCatalog.js';
+import { getState } from '../services/stateManager.js';
 
-import { db } from '../firebaseConfig';
-import { guardarMensajeEnLiveChat, guardarConversacionEnHistorial } from '../services/chatLogger';
-import { extraerProductoDelMensaje } from '../utils/extraerProductoDelMensaje';
-import { getProductoDesdeXLSX } from '~/utils/getProductoDesdeXLSX';
+import { db } from '../firebaseConfig.js';
+import { guardarMensajeEnLiveChat, guardarConversacionEnHistorial } from '../services/chatLogger.js';
+import { extraerProductoDelMensaje } from '../utils/extraerProductoDelMensaje.js';
+import { getProductoDesdeXLSX } from '~/utils/getProductoDesdeXLSX.js';
 
 // 🔧 Cargar mensajes desde Firestore y reemplazar {{nombre}} si aplica
 async function getMensaje(tipo: string, nombre?: string): Promise<string> {

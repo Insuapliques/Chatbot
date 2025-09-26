@@ -1,6 +1,6 @@
 import { getStorage } from "firebase-admin/storage";
 import * as xlsx from "xlsx";
-import { db } from "../firebaseConfig";
+import { db } from "../firebaseConfig.js";
 
 let cache: any[] | null = null;
 let lastFetched: number | null = null;

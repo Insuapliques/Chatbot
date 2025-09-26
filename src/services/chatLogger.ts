@@ -1,5 +1,5 @@
 // src/services/chatLogger.ts
-import { db } from '../firebaseConfig';
+import { db } from '../firebaseConfig.js';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 

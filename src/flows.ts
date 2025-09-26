@@ -1,9 +1,9 @@
 import { createFlow } from "@builderbot/bot";
-import { welcomeFlow, registrarNombreFlow, inteligenciaArtificialFlow } from "./flows/welcomeFlow";
-import { asesorHumanoFlow } from "./flows/asesorHumanoFlow";
-import { clientesIndecisosFlow } from "./flows/clientesIndecisosFlow";
-import { dtfFlow } from "./flows/dtfFlow";
-import { enviosFlow } from "./flows/enviosFlow";
+import { welcomeFlow, registrarNombreFlow, inteligenciaArtificialFlow } from "./flows/welcomeFlow.js";
+import { asesorHumanoFlow } from "./flows/asesorHumanoFlow.js";
+import { clientesIndecisosFlow } from "./flows/clientesIndecisosFlow.js";
+import { dtfFlow } from "./flows/dtfFlow.js";
+import { enviosFlow } from "./flows/enviosFlow.js";
 
 export const main = createFlow([
   welcomeFlow,

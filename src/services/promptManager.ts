@@ -1,5 +1,5 @@
 import type { DocumentData, DocumentSnapshot } from 'firebase-admin/firestore';
-import { db } from '../firebaseConfig';
+import { db } from '../firebaseConfig.js';
 
 export interface PromptParams {
   temperature?: number;

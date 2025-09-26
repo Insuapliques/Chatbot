@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import admin from 'firebase-admin';
-import { db } from '../firebaseConfig';
+import { db } from '../firebaseConfig.js';
 
 type AuthContextType = 'apiKey' | 'serviceToken' | 'firebase' | 'unauthenticated' | 'invalid';
 

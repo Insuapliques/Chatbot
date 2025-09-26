@@ -1,5 +1,5 @@
 import { addKeyword } from '@builderbot/bot';
-import { db } from '../firebaseConfig';
+import { db } from '../firebaseConfig.js';
 
 export const asesorHumanoFlow = addKeyword([ 'quiero hablar con alguien', 'asesor humano', 'atención personalizada', 'prefiero hablar con alguien directamente', 'necesito un humano', 'hablar con asesor', 'quiero atención de una persona'
 ])

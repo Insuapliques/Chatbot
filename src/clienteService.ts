@@ -1,5 +1,5 @@
 // clienteService.ts
-import { db } from './firebaseConfig';
+import { db } from './firebaseConfig.js';
 
 export const obtenerCliente = async (numero: string): Promise<string | null> => {
     const ref = db.collection("clientes").doc(numero);
