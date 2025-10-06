@@ -134,13 +134,24 @@ async function setupSnapshotListener(): Promise<void> {
   const docRef = db.doc(DEFAULT_DOC_PATH);
   const snapshot = await docRef.get();
 
+  console.log(`[promptManager] 📚 Loading prompt from Firestore: ${DEFAULT_DOC_PATH}`);
+
   if (!snapshot.exists) {
     console.warn(
       `[promptManager] Documento ${DEFAULT_DOC_PATH} no encontrado en Firestore; se usará la configuración por defecto.`,
     );
     setCachedConfig({ ...DEFAULT_CONFIG });
   } else {
-    setCachedConfig(normalizeSnapshot(snapshot));
+    const config = normalizeSnapshot(snapshot);
+    console.log('[promptManager] ✅ Prompt loaded successfully:', {
+      path: DEFAULT_DOC_PATH,
+      promptBaseLength: config.promptBase.length,
+      promptPreview: config.promptBase.substring(0, 150) + '...',
+      closingWordsCount: config.closingWords.length,
+      hasClosingMenu: !!config.closingMenu,
+      params: config.params,
+    });
+    setCachedConfig(config);
   }
 
   unsubscribe = docRef.onSnapshot((snap) => {

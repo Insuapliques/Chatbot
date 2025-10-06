@@ -586,6 +586,18 @@ async function callOpenAI(
       request.metadata = metadata;
     }
 
+    // Debug: Log the full request being sent to OpenAI
+    console.log('[aiService] 🔍 Request to OpenAI:', {
+      model: request.model,
+      systemPromptLength: config.promptBase.length,
+      systemPromptPreview: config.promptBase.substring(0, 200) + '...',
+      memoryContextLength: sanitizedMemory.length,
+      userMessageLength: sanitizedMessage.length,
+      userMessagePreview: sanitizedMessage.substring(0, 100),
+      totalInputMessages: request.input.length,
+      metadata: request.metadata,
+    });
+
     const response = await client.responses.create(request, { signal: controller.signal });
 
     // Extract text from response
@@ -617,6 +629,11 @@ async function callOpenAI(
         messageFound: response.output?.some((item: any) => item.type === 'message'),
         responseKeys: Object.keys(response),
         tokens,
+        status: response.status,
+        error: response.error,
+        incompleteDetails: response.incomplete_details,
+        // Show reasoning content if present
+        reasoningContent: response.output?.find((item: any) => item.type === 'reasoning'),
       });
     } else {
       console.log('[aiService] ✅ Extracted text:', {
