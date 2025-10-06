@@ -5,6 +5,7 @@ import { ensurePromptConfig, getPromptConfig, shouldAppendClosing } from './prom
 import { db } from '../firebaseConfig.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import { extractMemoryCandidates, shouldRemember } from './memoryExtractor.js';
+import { loadPriceListForAI } from './priceListLoader.js';
 
 type PrimitiveRecord = Record<string, string>;
 type MetadataInput = Record<string, string | number | boolean | null>;
@@ -536,6 +537,7 @@ async function callOpenAI(
   metadata: PrimitiveRecord | undefined,
   attempt: number,
   memoryContext?: string,
+  priceListContext?: string,
 ): Promise<OpenAIResult> {
   const start = Date.now();
   const controller = new AbortController();
@@ -544,6 +546,13 @@ async function callOpenAI(
   try {
     const client = getOpenAI();
     const systemMessages = [{ role: 'system' as const, content: config.promptBase }];
+
+    // Add price list context if available
+    if (priceListContext) {
+      systemMessages.push({ role: 'system' as const, content: priceListContext });
+    }
+
+    // Add memory context if available
     const sanitizedMemory = memoryContext ? sanitizeMessage(memoryContext) : '';
     if (sanitizedMemory) {
       systemMessages.push({ role: 'system' as const, content: sanitizedMemory });
@@ -591,6 +600,8 @@ async function callOpenAI(
       model: request.model,
       systemPromptLength: config.promptBase.length,
       systemPromptPreview: config.promptBase.substring(0, 200) + '...',
+      priceListLoaded: !!priceListContext,
+      priceListLength: priceListContext?.length || 0,
       memoryContextLength: sanitizedMemory.length,
       userMessageLength: sanitizedMessage.length,
       userMessagePreview: sanitizedMessage.substring(0, 100),
@@ -759,6 +770,10 @@ export async function answerWithPromptBase(options: AnswerOptions): Promise<Answ
     sanitizedMessage,
     catalogContext?.addition,
   );
+
+  // Load price list for AI context
+  const priceListContext = await loadPriceListForAI();
+
   await ensurePromptConfig();
   let streamingWarned = false;
 
@@ -775,6 +790,7 @@ export async function answerWithPromptBase(options: AnswerOptions): Promise<Answ
         metadata,
         attempt + 1,
         memorySystemContext,
+        priceListContext ?? undefined,
       );
       const finalText = ensureCatalogCitation(openAiResult.text, catalogContext?.normalizedVersion);
       if (userId) {
