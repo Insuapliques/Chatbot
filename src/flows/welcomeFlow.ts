@@ -119,15 +119,15 @@ const inteligenciaArtificialFlow = addKeyword([
     return;
   }
 
-  const productoChatbot = await buscarProductoChatbot(ctx.body);
-  if (productoChatbot) {
-    const mensaje = productoChatbot.respuesta || await getMensaje("recursoGenerico");
-    await guardarConversacionEnHistorial(ctx, mensaje, "bot");
+  // Skip catalog sending in flows - handled deterministically in handler
+  const catalogoYaEnviado = estado?.catalogoEnviado === true;
 
-    if (["pdf", "imagen", "video"].includes(productoChatbot.tipo)) {
-      await flowDynamic([{ body: mensaje, media: productoChatbot.url }]);
-    } else {
-      await flowDynamic(mensaje);
+  if (!catalogoYaEnviado) {
+    const productoChatbot = await buscarProductoChatbot(ctx.body);
+    if (productoChatbot) {
+      // Catalog will be handled by deterministic service, skip here
+      console.log('[flow] Catalog match found, skipping (handled by deterministic service)');
+      return;
     }
   }
 

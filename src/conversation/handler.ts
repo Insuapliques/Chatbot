@@ -6,11 +6,11 @@ import {
   getChatState,
   setChatState,
   logStateTransition,
-  logDedupSkipped,
   shouldThrottleIntent,
   withTimestamp,
 } from './state.js';
 import { downloadAndUploadToFirebase } from '../utils/media.js';
+import { shouldSkipByMessageId } from '../middleware/dedup.js';
 import { intentarEnviarCatalogo } from '../services/catalogo.service.js';
 
 const PRODUCTOS = ['camiseta', 'camisetas', 'chompa', 'chompas', 'jogger', 'joggers', 'pantaloneta', 'pantalonetas'];
@@ -143,15 +143,27 @@ export function createConversationHandler(deps: ConversationHandlerDeps) {
       return;
     }
 
-    const incomingText = sanitizeText(ctx.body);
-    const { ref, data: chatState } = await getChatState(phone);
-
-    if (chatState.ultimoMessageId && chatState.ultimoMessageId === messageId) {
-      await logDedupSkipped(phone, messageId);
+    // 1. DEDUPLICATION - Early return if duplicate
+    if (await shouldSkipByMessageId(phone, messageId)) {
       ctx.body = '';
       return;
     }
 
+    const incomingText = sanitizeText(ctx.body);
+    const { ref, data: chatState } = await getChatState(phone);
+
+    // 2. HUMAN HANDOFF - Early return if human mode active
+    if (chatState.modoHumano === true) {
+      // Log suppression
+      await db.collection('logs').doc('sendSuppressedByHuman').collection('entries').add({
+        phone,
+        at: FieldValue.serverTimestamp(),
+      });
+      ctx.body = '';
+      return;
+    }
+
+    // Handle media files
     let fileUrl: string | null = null;
     let fileType = type;
     if (type !== 'text' && ctx.fileData?.id) {
@@ -169,19 +181,8 @@ export function createConversationHandler(deps: ConversationHandlerDeps) {
 
     await saveIncomingMessage(phone, ctx, incomingText, fileUrl, fileType);
 
-    if (incomingText) {
-      const catalogHandled = await intentarEnviarCatalogo(phone, incomingText);
-      if (catalogHandled) {
-        await setChatState(ref, {
-          ultimoMessageId: messageId,
-          ultimoContacto: FieldValue.serverTimestamp() as unknown as Timestamp,
-        });
-        ctx.body = '';
-        return;
-      }
-    }
-
-    if (chatState.modoHumano) {
+    // 3. DETERMINISTIC CATALOG - Early return if catalog sent
+    if (incomingText && await intentarEnviarCatalogo(phone, incomingText)) {
       ctx.body = '';
       return;
     }

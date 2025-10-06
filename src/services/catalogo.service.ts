@@ -3,9 +3,8 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../firebaseConfig.js';
 import { findProductoByMessage } from './productos.service.js';
 import { normalize } from '../utils/text.js';
-import { getChatState, logCatalogSent, logStateTransition } from '../conversation/state.js';
 
-const REENVIO_REGEX = /(reenvia|otra vez|de nuevo|nuevamente)/i;
+const REENVIO_REGEX = /(reenvia|otra vez|de nuevo|nuevamente|again|resend)/i;
 
 let botInstance: CoreClass | null = null;
 
@@ -13,27 +12,36 @@ export function setCatalogoBot(bot: CoreClass): void {
   botInstance = bot;
 }
 
+/**
+ * Deterministic catalog sending service
+ * Returns true if a catalog was sent, false otherwise
+ */
 export async function intentarEnviarCatalogo(phone: string, text: string): Promise<boolean> {
   if (!botInstance) {
-    console.warn('Bot instance no inicializada para envío de catálogos.');
+    console.warn('[catalogo] Bot instance not initialized');
     return false;
   }
 
   const provider = botInstance.provider;
   if (!provider) {
-    console.warn('Provider no disponible en botInstance para envío de catálogos.');
+    console.warn('[catalogo] Provider not available');
     return false;
   }
 
+  // Read current state
+  const stateRef = db.collection('liveChatStates').doc(phone);
+  const stateSnap = await stateRef.get();
+  const state = stateSnap.exists ? stateSnap.data() : {};
+
+  // Check if catalog already sent (unless explicit resend requested)
   const normalizedText = normalize(text);
-  const wantsResend = REENVIO_REGEX.test(normalizedText);
+  const wantsResend = REENVIO_REGEX.test(text);
 
-  const { ref, data: chatState } = await getChatState(phone);
-
-  if (chatState.catalogoEnviado && !wantsResend) {
+  if (state?.catalogoEnviado === true && !wantsResend) {
     return false;
   }
 
+  // Find matching product
   const producto = await findProductoByMessage(text);
   if (!producto) {
     return false;
@@ -49,6 +57,7 @@ export async function intentarEnviarCatalogo(phone: string, text: string): Promi
   let fileType: string = 'text';
   let loggedText = caption;
 
+  // Send via appropriate method based on product type
   try {
     if (producto.tipo === 'pdf' && producto.url) {
       await provider.sendMessageMeta({
@@ -105,13 +114,24 @@ export async function intentarEnviarCatalogo(phone: string, text: string): Promi
       loggedText = fallbackText;
     }
   } catch (error) {
-    console.error('Error enviando catálogo multimedia, usando fallback de texto:', error);
+    console.error('[catalogo] Media send failed, falling back to text:', error);
+
+    // Log send failure
+    await db.collection('logs').doc('sendFailures').collection('entries').add({
+      phone,
+      payload: { tipo: producto.tipo, url: producto.url },
+      error: error instanceof Error ? error.message : String(error),
+      at: FieldValue.serverTimestamp(),
+    });
+
+    // Fallback to text
     await provider.sendMessage(phone, fallbackText);
     fileType = 'text';
     fileUrl = producto.url ?? null;
     loggedText = fallbackText;
   }
 
+  // Log to liveChat
   await db.collection('liveChat').add({
     user: phone,
     text: loggedText,
@@ -121,21 +141,38 @@ export async function intentarEnviarCatalogo(phone: string, text: string): Promi
     origen: 'bot',
   });
 
+  // Update state with merged schemas (both handler and flow)
   const updatePayload = {
     catalogoEnviado: true,
+    has_sent_catalog: true,
     catalogoRef: producto.keyword,
-    estadoActual: 'CATALOGO_ENVIADO' as const,
+    estadoActual: 'CATALOGO_ENVIADO',
+    state: 'CATALOG_SENT',
     ultimoIntent: 'catalogo',
+    last_intent: 'catalogo',
     productoActual: producto.keyword,
     ultimoCambio: FieldValue.serverTimestamp(),
   };
 
-  await ref.set(updatePayload, { merge: true });
+  await stateRef.set(updatePayload, { merge: true });
 
-  if (chatState.estadoActual !== 'CATALOGO_ENVIADO') {
-    await logStateTransition(phone, chatState.estadoActual, 'CATALOGO_ENVIADO', 'catalogo');
+  // Log state transition
+  if (state?.estadoActual !== 'CATALOGO_ENVIADO') {
+    await db.collection('logs').doc('stateTransitions').collection('entries').add({
+      phone,
+      from: state?.estadoActual ?? 'GREETING',
+      to: 'CATALOGO_ENVIADO',
+      intent: 'catalogo',
+      at: FieldValue.serverTimestamp(),
+    });
   }
-  await logCatalogSent(phone);
+
+  // Log catalog sent
+  await db.collection('logs').doc('catalogSent').collection('entries').add({
+    phone,
+    catalogRef: producto.keyword,
+    at: FieldValue.serverTimestamp(),
+  });
 
   return true;
 }
