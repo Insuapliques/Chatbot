@@ -588,8 +588,42 @@ async function callOpenAI(
 
     const response = await client.responses.create(request, { signal: controller.signal });
 
-    const text = (response.output_text ?? '').trim();
+    // Extract text from response
+    let text = (response.output_text ?? '').trim();
+
+    // Fallback: extract from response.output array if output_text is empty
+    if (!text && Array.isArray(response.output) && response.output.length > 0) {
+      const firstOutput = response.output[0];
+      if (firstOutput && firstOutput.type === 'message' && Array.isArray(firstOutput.content)) {
+        // ResponseOutputMessage has content array of ResponseOutputText items
+        const textContent = firstOutput.content.find((item: any) => item.type === 'text');
+        if (textContent && 'text' in textContent) {
+          text = textContent.text.trim();
+        }
+      }
+    }
+
     const tokens = response.usage?.total_tokens ?? undefined;
+
+    // Debug logging
+    if (!text || text.length === 0) {
+      console.warn('[aiService] ⚠️ OpenAI returned empty text!', {
+        hasResponse: !!response,
+        outputText: response.output_text,
+        outputLength: response.output?.length,
+        firstOutputType: response.output?.[0]?.type,
+        firstOutputContentLength: (response.output?.[0] as any)?.content?.length,
+        responseKeys: Object.keys(response),
+        tokens,
+      });
+    } else {
+      console.log('[aiService] ✅ Extracted text:', {
+        textLength: text.length,
+        textPreview: text.substring(0, 100) + '...',
+        source: response.output_text ? 'output_text' : 'output[0].content',
+      });
+    }
+
     emitAiMetrics({
       model: DEFAULT_MODEL,
       provider: 'openai',
