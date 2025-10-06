@@ -593,10 +593,12 @@ async function callOpenAI(
 
     // Fallback: extract from response.output array if output_text is empty
     if (!text && Array.isArray(response.output) && response.output.length > 0) {
-      const firstOutput = response.output[0];
-      if (firstOutput && firstOutput.type === 'message' && Array.isArray(firstOutput.content)) {
+      // GPT-5 may have reasoning items first, find the message item
+      const messageOutput = response.output.find((item: any) => item.type === 'message') as any;
+
+      if (messageOutput && messageOutput.type === 'message' && Array.isArray(messageOutput.content)) {
         // ResponseOutputMessage has content array of ResponseOutputText items
-        const textContent = firstOutput.content.find((item: any) => item.type === 'text');
+        const textContent = messageOutput.content.find((item: any) => item.type === 'text');
         if (textContent && 'text' in textContent) {
           text = textContent.text.trim();
         }
@@ -611,8 +613,8 @@ async function callOpenAI(
         hasResponse: !!response,
         outputText: response.output_text,
         outputLength: response.output?.length,
-        firstOutputType: response.output?.[0]?.type,
-        firstOutputContentLength: (response.output?.[0] as any)?.content?.length,
+        outputTypes: response.output?.map((item: any) => item.type),
+        messageFound: response.output?.some((item: any) => item.type === 'message'),
         responseKeys: Object.keys(response),
         tokens,
       });
@@ -620,7 +622,8 @@ async function callOpenAI(
       console.log('[aiService] ✅ Extracted text:', {
         textLength: text.length,
         textPreview: text.substring(0, 100) + '...',
-        source: response.output_text ? 'output_text' : 'output[0].content',
+        source: response.output_text ? 'output_text' : 'output array',
+        outputTypes: response.output?.map((item: any) => item.type),
       });
     }
 
