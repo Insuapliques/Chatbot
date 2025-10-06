@@ -40,34 +40,42 @@ export async function loadPriceListForAI(): Promise<string | null> {
       return null;
     }
 
-    console.log('[priceListLoader] 📄 Document data:', JSON.stringify(data, null, 2));
+    console.log('[priceListLoader] 📄 Document data:', {
+      Name: data.Name,
+      Path: data.Path,
+      ContentType: data.ContentType,
+      UpdatedAt: data.UpdatedAt,
+      hasUrl: !!data.url,
+    });
 
-    // Try to use URL if available, otherwise fall back to path
+    // Try to use URL if available, otherwise fall back to Path (capitalized field names)
     let buffer: Buffer;
+    const url = data.url;
+    const path = data.Path || data.path;
 
-    if (data.url) {
-      console.log('[priceListLoader] 📥 Downloading from URL:', data.url);
-      const response = await fetch(data.url);
+    if (url) {
+      console.log('[priceListLoader] 📥 Downloading from URL:', url);
+      const response = await fetch(url);
       if (!response.ok) {
         console.error('[priceListLoader] ❌ Failed to download from URL:', response.status, response.statusText);
         return null;
       }
       const arrayBuffer = await response.arrayBuffer();
       buffer = Buffer.from(arrayBuffer);
-    } else if (data.path) {
-      console.log('[priceListLoader] 📊 Loading from Storage path:', data.path);
+    } else if (path) {
+      console.log('[priceListLoader] 📊 Loading from Storage path:', path);
       const bucket = getStorage().bucket();
-      const file = bucket.file(data.path);
+      const file = bucket.file(path);
 
       const [exists] = await file.exists();
       if (!exists) {
-        console.error('[priceListLoader] ❌ File does not exist at path:', data.path);
+        console.error('[priceListLoader] ❌ File does not exist at path:', path);
         return null;
       }
 
       [buffer] = await file.download();
     } else {
-      console.warn('[priceListLoader] No path or url found in settings/archivo_entrenamiento');
+      console.warn('[priceListLoader] No Path or url found in settings/archivo_entrenamiento');
       return null;
     }
 
