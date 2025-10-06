@@ -31,12 +31,12 @@ export async function loadPriceListForAI(): Promise<string | null> {
   }
 
   try {
-    // Load training_file document from settings collection
-    const settingsDoc = await db.collection('settings').doc('training_file').get();
+    // Load archivo_entrenamiento document from settings collection
+    const settingsDoc = await db.collection('settings').doc('archivo_entrenamiento').get();
     const data = settingsDoc.data();
 
     if (!data?.path) {
-      console.warn('[priceListLoader] No price list path found in settings/training_file');
+      console.warn('[priceListLoader] No price list path found in settings/archivo_entrenamiento');
       return null;
     }
 
