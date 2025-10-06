@@ -26,7 +26,7 @@ export interface AnswerResult {
 }
 
 const DEFAULT_MODEL = process.env.LLM_MODEL ?? 'gpt-5';
-const DEFAULT_TIMEOUT = Number(process.env.LLM_TIMEOUT_MS ?? 20_000);
+const DEFAULT_TIMEOUT = Number(process.env.LLM_TIMEOUT_MS ?? 60_000);
 const MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES ?? 2);
 const MAX_INPUT_LENGTH = Number(process.env.LLM_MAX_INPUT_CHARS ?? 6000);
 const FALLBACK_DESCRIPTOR = process.env.LLM_FALLBACK;
