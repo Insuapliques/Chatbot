@@ -35,17 +35,41 @@ export async function loadPriceListForAI(): Promise<string | null> {
     const settingsDoc = await db.collection('settings').doc('archivo_entrenamiento').get();
     const data = settingsDoc.data();
 
-    if (!data?.path) {
-      console.warn('[priceListLoader] No price list path found in settings/archivo_entrenamiento');
+    if (!data) {
+      console.warn('[priceListLoader] Document settings/archivo_entrenamiento not found');
       return null;
     }
 
-    console.log('[priceListLoader] 📊 Loading price list from:', data.path);
+    console.log('[priceListLoader] 📄 Document data:', JSON.stringify(data, null, 2));
 
-    // Download XLSX from Firebase Storage
-    const bucket = getStorage().bucket();
-    const file = bucket.file(data.path);
-    const [buffer] = await file.download();
+    // Try to use URL if available, otherwise fall back to path
+    let buffer: Buffer;
+
+    if (data.url) {
+      console.log('[priceListLoader] 📥 Downloading from URL:', data.url);
+      const response = await fetch(data.url);
+      if (!response.ok) {
+        console.error('[priceListLoader] ❌ Failed to download from URL:', response.status, response.statusText);
+        return null;
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+    } else if (data.path) {
+      console.log('[priceListLoader] 📊 Loading from Storage path:', data.path);
+      const bucket = getStorage().bucket();
+      const file = bucket.file(data.path);
+
+      const [exists] = await file.exists();
+      if (!exists) {
+        console.error('[priceListLoader] ❌ File does not exist at path:', data.path);
+        return null;
+      }
+
+      [buffer] = await file.download();
+    } else {
+      console.warn('[priceListLoader] No path or url found in settings/archivo_entrenamiento');
+      return null;
+    }
 
     // Parse XLSX
     const workbook = xlsx.read(buffer, { type: 'buffer' });
