@@ -165,7 +165,7 @@ export function createConversationHandler(deps: ConversationHandlerDeps) {
 
     // Handle media files
     let fileUrl: string | null = null;
-    let fileType = type;
+    const fileType = type;
     if (type !== 'text' && ctx.fileData?.id) {
       try {
         fileUrl = await downloadAndUploadToFirebase(ctx.fileData.id, {

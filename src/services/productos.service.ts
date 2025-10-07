@@ -16,6 +16,9 @@ const CACHE_TTL_MS = 60_000;
 let cache: ProductoCatalogo[] | null = null;
 let cacheTimestamp = 0;
 
+// Regex for detecting generic catalog requests
+const CATALOG_REQUEST_REGEX = /(catalog|catalogo|cata|lista|menu|precio|disen|modelo?s?)/i;
+
 async function fetchProductos(): Promise<ProductoCatalogo[]> {
   const snapshot = await db.collection('productos_chatbot').get();
   return snapshot.docs
@@ -52,31 +55,63 @@ export async function getProductos(): Promise<ProductoCatalogo[]> {
   return cache ?? [];
 }
 
-const FALLBACK_REGEX = /(catalog|catalogo|cata|disen|modelo?s?)/i;
-
 export async function findProductoByMessage(message: string): Promise<ProductoCatalogo | null> {
   const productos = await getProductos();
   if (productos.length === 0) {
+    console.warn('[productos] No products found in productos_chatbot collection');
     return null;
   }
 
   const normalizedMessage = normalize(message);
 
-  // Check all keywords for each product
+  // Check all keywords for exact match
   for (const producto of productos) {
     for (const keyword of producto.keywords) {
       if (includesAll(normalizedMessage, keyword)) {
+        console.log('[productos] ✅ Exact keyword match found:', keyword);
         return producto;
       }
     }
   }
 
-  // Fallback to first product if message matches common catalog keywords
-  if (FALLBACK_REGEX.test(normalizedMessage)) {
-    return productos[0] ?? null;
+  console.log('[productos] No exact match found for:', normalizedMessage);
+  return null;
+}
+
+/**
+ * Detects if the message is a generic catalog request (without specific product keyword)
+ * Returns true if user is asking for catalogs in general
+ */
+export function isGenericCatalogRequest(message: string): boolean {
+  const normalized = normalize(message);
+  return CATALOG_REQUEST_REGEX.test(normalized);
+}
+
+/**
+ * Build a formatted list of available catalogs for the user to choose from
+ * Returns a text message listing all catalog keywords
+ */
+export async function buildCatalogListMessage(): Promise<string | null> {
+  const productos = await getProductos();
+  if (productos.length === 0) {
+    return null;
   }
 
-  return null;
+  const lines: string[] = [
+    'Tenemos los siguientes catálogos disponibles:',
+    '',
+  ];
+
+  productos.forEach((producto, index) => {
+    // Use first keyword as the display name
+    const displayName = producto.keyword || 'Catálogo sin nombre';
+    lines.push(`${index + 1}. ${displayName}`);
+  });
+
+  lines.push('');
+  lines.push('¿Cuál te gustaría revisar? Escríbelo tal como aparece arriba.');
+
+  return lines.join('\n');
 }
 
 export function clearProductosCache(): void {

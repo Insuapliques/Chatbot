@@ -1,8 +1,7 @@
 import type { CoreClass } from '@builderbot/bot';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../firebaseConfig.js';
-import { findProductoByMessage } from './productos.service.js';
-import { normalize } from '../utils/text.js';
+import { findProductoByMessage, isGenericCatalogRequest, buildCatalogListMessage } from './productos.service.js';
 
 const REENVIO_REGEX = /(reenvia|otra vez|de nuevo|nuevamente|again|resend)/i;
 
@@ -14,7 +13,7 @@ export function setCatalogoBot(bot: CoreClass): void {
 
 /**
  * Deterministic catalog sending service
- * Returns true if a catalog was sent, false otherwise
+ * Returns true if a catalog was sent OR if catalog list was shown, false otherwise
  */
 export async function intentarEnviarCatalogo(phone: string, text: string): Promise<boolean> {
   if (!botInstance) {
@@ -33,8 +32,7 @@ export async function intentarEnviarCatalogo(phone: string, text: string): Promi
   const stateSnap = await stateRef.get();
   const state = stateSnap.exists ? stateSnap.data() : {};
 
-  // Check if catalog already sent (unless explicit resend requested)
-  const normalizedText = normalize(text);
+  // Check if user wants to resend
   const wantsResend = REENVIO_REGEX.test(text);
 
   if (state?.catalogoEnviado === true && !wantsResend) {
@@ -43,7 +41,41 @@ export async function intentarEnviarCatalogo(phone: string, text: string): Promi
 
   // Find matching product
   const producto = await findProductoByMessage(text);
+
+  // If no exact match, check if it's a generic catalog request
   if (!producto) {
+    if (isGenericCatalogRequest(text)) {
+      console.log('[catalogo] Generic catalog request detected, listing available catalogs');
+      const catalogList = await buildCatalogListMessage();
+
+      if (catalogList) {
+        // Send the catalog list
+        await provider.sendMessage(phone, catalogList);
+
+        // Log to liveChat
+        await db.collection('liveChat').add({
+          user: phone,
+          text: catalogList,
+          fileUrl: null,
+          fileType: 'text',
+          timestamp: FieldValue.serverTimestamp(),
+          origen: 'bot',
+        });
+
+        // Update state to indicate catalog list was shown
+        await stateRef.set({
+          catalogoListaMostrada: true,
+          estadoActual: 'DISCOVERY',
+          state: 'DISCOVERY',
+          ultimoIntent: 'lista_catalogos',
+          last_intent: 'lista_catalogos',
+          ultimoCambio: FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        return true;
+      }
+    }
+
     return false;
   }
 

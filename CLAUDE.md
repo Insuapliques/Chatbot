@@ -49,9 +49,15 @@ When modifying conversation logic, ensure both state schemas remain synchronized
 Before any AI call, the system attempts **deterministic catalog matching** via [src/services/catalogo.service.ts](src/services/catalogo.service.ts):
 
 1. `intentarEnviarCatalogo()` checks user message for product keywords
-2. If match found in `productos_chatbot` Firestore collection, sends media (PDF/image/video) via Meta provider's native methods
-3. Sets `ctx.body = ''` to prevent downstream processing
-4. Only if no match does the message proceed to AI
+2. If **exact match** found in `productos_chatbot` Firestore collection, sends media (PDF/image/video) via Meta provider's native methods
+3. If **no exact match** but message contains generic catalog keywords (catalogo, lista, menu, etc.), shows a **list of available catalogs** for the user to choose from
+4. Sets `ctx.body = ''` to prevent downstream processing
+5. Only if no match AND not a generic catalog request does the message proceed to AI
+
+**Catalog Listing Feature**: When user says "enviame el catalogo" but there's no exact keyword match:
+- System shows numbered list: "1. catalogo de chompas\n2. catalogo de joggers\n..."
+- User can then write the exact keyword to receive the file
+- See [CATALOG_LIST_FEATURE.md](CATALOG_LIST_FEATURE.md) for full details
 
 **Important**: When adding product types, update both:
 - `productos_chatbot` Firestore collection (with `keyword`, `respuesta`, `tipo`, `url` fields)
