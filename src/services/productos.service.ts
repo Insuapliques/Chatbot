@@ -5,7 +5,8 @@ export type ProductoTipo = 'pdf' | 'image' | 'video' | 'url' | 'texto';
 
 export interface ProductoCatalogo {
   id: string;
-  keyword: string;
+  keyword: string; // Normalized to string for matching (may come from array or string)
+  keywords: string[]; // All keywords as array
   respuesta?: string | null;
   tipo: ProductoTipo;
   url?: string | null;
@@ -21,15 +22,25 @@ async function fetchProductos(): Promise<ProductoCatalogo[]> {
     .map((doc) => {
       const data = doc.data();
       const tipo = String(data.tipo ?? 'texto').toLowerCase() as ProductoTipo;
+
+      // Support both keyword formats: string (from frontend) or array (from docs)
+      let keywords: string[] = [];
+      if (Array.isArray(data.keyword)) {
+        keywords = data.keyword.filter((k: any) => typeof k === 'string' && k.trim());
+      } else if (typeof data.keyword === 'string' && data.keyword.trim()) {
+        keywords = [data.keyword.trim()];
+      }
+
       return {
         id: doc.id,
-        keyword: data.keyword ?? '',
+        keyword: keywords[0] ?? '', // Primary keyword for backward compatibility
+        keywords, // All keywords for multi-keyword matching
         respuesta: data.respuesta ?? null,
         tipo,
         url: data.url ?? null,
       } satisfies ProductoCatalogo;
     })
-    .filter((producto) => Boolean(producto.keyword));
+    .filter((producto) => producto.keywords.length > 0);
 }
 
 export async function getProductos(): Promise<ProductoCatalogo[]> {
@@ -51,12 +62,16 @@ export async function findProductoByMessage(message: string): Promise<ProductoCa
 
   const normalizedMessage = normalize(message);
 
+  // Check all keywords for each product
   for (const producto of productos) {
-    if (includesAll(normalizedMessage, producto.keyword)) {
-      return producto;
+    for (const keyword of producto.keywords) {
+      if (includesAll(normalizedMessage, keyword)) {
+        return producto;
+      }
     }
   }
 
+  // Fallback to first product if message matches common catalog keywords
   if (FALLBACK_REGEX.test(normalizedMessage)) {
     return productos[0] ?? null;
   }

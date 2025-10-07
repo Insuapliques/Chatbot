@@ -78,14 +78,26 @@ function normalizeSnapshot(snapshot?: DocumentSnapshot<DocumentData>): PromptCon
 
   const promptBase = extractPromptBase(data);
 
-  const closingWords: string[] = Array.isArray(data.closingWords)
-    ? data.closingWords.filter((word) => typeof word === 'string' && word.trim())
-    : DEFAULT_CONFIG.closingWords;
+  // Support both closingWords (array) and palabra_cierre (string from frontend)
+  let closingWords: string[] = DEFAULT_CONFIG.closingWords;
 
+  if (Array.isArray(data.closingWords)) {
+    closingWords = data.closingWords.filter((word) => typeof word === 'string' && word.trim());
+  } else if (typeof data.palabra_cierre === 'string' && data.palabra_cierre.trim()) {
+    // Frontend sends single string in palabra_cierre - split by common delimiters
+    closingWords = data.palabra_cierre
+      .split(/[,;|\n]/)
+      .map((word) => word.trim())
+      .filter(Boolean);
+  }
+
+  // Support both closingMenu and cierreMenuFinal (from frontend welcome_messages)
   const closingMenu =
-    typeof data.closingMenu === 'string' && data.closingMenu.trim().length > 0
+    (typeof data.closingMenu === 'string' && data.closingMenu.trim().length > 0
       ? data.closingMenu
-      : undefined;
+      : typeof data.cierreMenuFinal === 'string' && data.cierreMenuFinal.trim().length > 0
+      ? data.cierreMenuFinal
+      : undefined);
 
   const params: PromptParams = {
     temperature:
