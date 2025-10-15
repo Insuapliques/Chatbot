@@ -7,6 +7,7 @@ import cors, { CorsOptions } from 'cors';
 import trainingRoutes from '../routes/trainingRoutes.js';
 import conversationRoutes from '../routes/conversationRoutes.js';
 import userRoutes from '../routes/userRoutes.js';
+import agentRoutes from '../routes/agentRoutes.js';
 import { main as flow } from './flows.js';
 import { db } from './firebaseConfig.js';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -44,6 +45,7 @@ app.use(express.json());
 app.use('/api/conversations', auditAccess, authenticateRequest, conversationRoutes);
 app.use('/api/training', auditAccess, authenticateRequest, trainingRoutes);
 app.use('/api/users', auditAccess, authenticateRequest, userRoutes);
+app.use('/api/agent', auditAccess, authenticateRequest, agentRoutes);
 app.use('/v1/live', auditAccess, authenticateRequest);
 app.use('/v1/catalog/reindex', auditAccess, authenticateRequest);
 
