@@ -36,13 +36,8 @@ export async function shouldSkipByMessageId(
     return true;
   }
 
-  // Store the new message ID
-  await stateRef.set(
-    {
-      ultimoMessageId: messageId,
-    },
-    { merge: true }
-  );
+  // NOTE: Do NOT update ultimoMessageId here - it's handled by the conversation handler
+  // to avoid race conditions. This function only checks for duplicates.
 
   return false;
 }

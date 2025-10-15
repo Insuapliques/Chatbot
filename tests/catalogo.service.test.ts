@@ -123,16 +123,25 @@ describe('catalogo.service', () => {
     );
   });
 
-  it('fallback on catalogo/diseños/modelos when no exact match', async () => {
+  it('shows catalog list when generic request without exact match', async () => {
     mockCollectionGet.mockResolvedValue({
       docs: [
         {
           id: 'general-1',
           data: () => ({
-            keyword: 'general',
-            respuesta: 'Catálogo general',
-            tipo: 'image',
-            url: 'https://example.com/catalogo.jpg',
+            keyword: 'chompas',
+            respuesta: 'Catálogo de chompas',
+            tipo: 'pdf',
+            url: 'https://example.com/chompas.pdf',
+          }),
+        },
+        {
+          id: 'general-2',
+          data: () => ({
+            keyword: 'joggers',
+            respuesta: 'Catálogo de joggers',
+            tipo: 'pdf',
+            url: 'https://example.com/joggers.pdf',
           }),
         },
       ],
@@ -144,17 +153,24 @@ describe('catalogo.service', () => {
     const result = await intentarEnviarCatalogo('1234567890', 'quiero ver el catalogo');
 
     expect(result).toBe(true);
-    expect(mockProvider.sendMessageMeta).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'image',
-      })
+    // Should send catalog list as text message
+    expect(mockProvider.sendMessage).toHaveBeenCalledWith(
+      '1234567890',
+      expect.stringContaining('Tenemos los siguientes catálogos disponibles')
+    );
+    expect(mockProvider.sendMessage).toHaveBeenCalledWith(
+      '1234567890',
+      expect.stringContaining('chompas')
     );
   });
 
-  it('no resend when catalogoEnviado is true', async () => {
+  it('no resend when same catalog already sent', async () => {
     mockStateDoc.mockResolvedValue({
       exists: true,
-      data: () => ({ catalogoEnviado: true }),
+      data: () => ({
+        catalogoEnviado: true,
+        catalogoRef: 'test',  // Same catalog reference
+      }),
     });
 
     mockCollectionGet.mockResolvedValue({
@@ -177,6 +193,38 @@ describe('catalogo.service', () => {
 
     expect(result).toBe(false);
     expect(mockProvider.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('allows sending different catalog when one already sent', async () => {
+    mockStateDoc.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        catalogoEnviado: true,
+        catalogoRef: 'chompas',  // Different catalog reference
+      }),
+    });
+
+    mockCollectionGet.mockResolvedValue({
+      docs: [
+        {
+          id: 'joggers',
+          data: () => ({
+            keyword: 'joggers',
+            respuesta: 'Catálogo de joggers',
+            tipo: 'pdf',
+            url: 'https://example.com/joggers.pdf',
+          }),
+        },
+      ],
+    });
+
+    const { setCatalogoBot, intentarEnviarCatalogo } = await import('../src/services/catalogo.service');
+    setCatalogoBot(mockBot);
+
+    const result = await intentarEnviarCatalogo('1234567890', 'quiero joggers');
+
+    expect(result).toBe(true);
+    expect(mockProvider.sendMessageMeta).toHaveBeenCalled();
   });
 
   it('resend allowed with reenvía/otra vez/again/resend', async () => {

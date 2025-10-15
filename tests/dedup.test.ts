@@ -48,10 +48,9 @@ describe('dedup middleware', () => {
     const result = await shouldSkipByMessageId('1234567890', 'msg-001');
 
     expect(result).toBe(false);
-    expect(mockStateSet).toHaveBeenCalledWith(
-      { ultimoMessageId: 'msg-001' },
-      { merge: true }
-    );
+    // NOTE: Middleware no longer updates state to avoid race conditions
+    // State is updated by the conversation handler instead
+    expect(mockStateSet).not.toHaveBeenCalled();
     expect(mockCollectionAdd).not.toHaveBeenCalled();
   });
 
@@ -86,10 +85,8 @@ describe('dedup middleware', () => {
     const result = await shouldSkipByMessageId('1234567890', 'msg-002');
 
     expect(result).toBe(false);
-    expect(mockStateSet).toHaveBeenCalledWith(
-      { ultimoMessageId: 'msg-002' },
-      { merge: true }
-    );
+    // NOTE: Middleware no longer updates state to avoid race conditions
+    expect(mockStateSet).not.toHaveBeenCalled();
   });
 
   it('handles missing phone or messageId gracefully', async () => {

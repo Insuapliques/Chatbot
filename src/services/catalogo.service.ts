@@ -35,12 +35,28 @@ export async function intentarEnviarCatalogo(phone: string, text: string): Promi
   // Check if user wants to resend
   const wantsResend = REENVIO_REGEX.test(text);
 
-  if (state?.catalogoEnviado === true && !wantsResend) {
-    return false;
-  }
-
-  // Find matching product
+  // Find matching product first
   const producto = await findProductoByMessage(text);
+
+  // Check both schema formats for catalog sent flag
+  const catalogAlreadySent = Boolean(
+    state?.catalogoEnviado === true ||
+    state?.has_sent_catalog === true
+  );
+
+  // If catalog was already sent, check if it's the same one or user wants resend
+  if (catalogAlreadySent && producto && !wantsResend) {
+    const lastCatalogRef = state?.catalogoRef || state?.productoActual;
+
+    // Allow sending a different catalog, but block same catalog
+    if (lastCatalogRef === producto.keyword) {
+      console.log(`[catalogo] Same catalog "${producto.keyword}" already sent, skipping`);
+      return false;
+    } else {
+      console.log(`[catalogo] Different catalog requested: "${producto.keyword}" vs "${lastCatalogRef}"`);
+      // Allow different catalog to be sent
+    }
+  }
 
   // If no exact match, check if it's a generic catalog request
   if (!producto) {
@@ -62,7 +78,7 @@ export async function intentarEnviarCatalogo(phone: string, text: string): Promi
           origen: 'bot',
         });
 
-        // Update state to indicate catalog list was shown
+        // Update state to indicate catalog list was shown (sync both schemas)
         await stateRef.set({
           catalogoListaMostrada: true,
           estadoActual: 'DISCOVERY',
@@ -72,10 +88,12 @@ export async function intentarEnviarCatalogo(phone: string, text: string): Promi
           ultimoCambio: FieldValue.serverTimestamp(),
         }, { merge: true });
 
+        console.log('[catalogo] Catalog list sent successfully');
         return true;
       }
     }
 
+    // No product match and not a generic request
     return false;
   }
 

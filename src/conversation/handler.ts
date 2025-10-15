@@ -150,10 +150,15 @@ export function createConversationHandler(deps: ConversationHandlerDeps) {
     }
 
     const incomingText = sanitizeText(ctx.body);
+
+    // Get current state BEFORE any processing
     const { ref, data: chatState } = await getChatState(phone);
 
-    // 2. HUMAN HANDOFF - Early return if human mode active
+    // 2. HUMAN HANDOFF - Early return if human mode active (before saving message)
     if (chatState.modoHumano === true) {
+      // Still save incoming message for operator visibility
+      await saveIncomingMessage(phone, ctx, incomingText, null, type);
+
       // Log suppression
       await db.collection('logs').doc('sendSuppressedByHuman').collection('entries').add({
         phone,
@@ -182,10 +187,14 @@ export function createConversationHandler(deps: ConversationHandlerDeps) {
     await saveIncomingMessage(phone, ctx, incomingText, fileUrl, fileType);
 
     // 3. DETERMINISTIC CATALOG - Early return if catalog sent
+    // NOTE: intentarEnviarCatalogo handles catalogoEnviado flag internally
     if (incomingText && await intentarEnviarCatalogo(phone, incomingText)) {
       ctx.body = '';
       return;
     }
+
+    // Reload state after catalog service may have updated it
+    const { data: freshChatState } = await getChatState(phone);
 
     const now = Timestamp.now();
     const basePatch: Partial<ChatStateDoc> = {
@@ -194,10 +203,10 @@ export function createConversationHandler(deps: ConversationHandlerDeps) {
     };
     const updates: Partial<ChatStateDoc> = { ...basePatch };
     const transitions: Array<{ from: EstadoConversacion; to: EstadoConversacion; intent: string }> = [];
-    let currentState: EstadoConversacion = chatState.estadoActual;
+    let currentState: EstadoConversacion = freshChatState.estadoActual;
     let handled = false;
     let recordedIntent: string | null = null;
-    let productoActual = chatState.productoActual ?? null;
+    let productoActual = freshChatState.productoActual ?? null;
 
     const productoDetectado = detectProducto(incomingText);
     if (productoDetectado) {
@@ -206,7 +215,7 @@ export function createConversationHandler(deps: ConversationHandlerDeps) {
     }
 
     const sendTextIfNeeded = async (text: string, intent: string) => {
-      if (shouldThrottleIntent(chatState, intent, now)) {
+      if (shouldThrottleIntent(freshChatState, intent, now)) {
         return;
       }
       await deps.sendText(phone, text);
@@ -218,7 +227,7 @@ export function createConversationHandler(deps: ConversationHandlerDeps) {
     };
 
     const transitionTo = (next: EstadoConversacion, intent: string) => {
-      if (chatState.pedidoEnProceso && next === 'DISCOVERY') {
+      if (freshChatState.pedidoEnProceso && next === 'DISCOVERY') {
         return;
       }
       if (currentState === next) {
@@ -231,9 +240,9 @@ export function createConversationHandler(deps: ConversationHandlerDeps) {
       Object.assign(updates, withTimestamp({}));
     };
 
-    if (!chatState.flags.saludoHecho) {
+    if (!freshChatState.flags.saludoHecho) {
       await sendTextIfNeeded('¡Hola! Soy tu asistente de Mimétisa. ¿En qué puedo ayudarte hoy?', 'SALUDO');
-      updates.flags = { ...chatState.flags, saludoHecho: true };
+      updates.flags = { ...freshChatState.flags, saludoHecho: true };
       if (currentState === 'GREETING') {
         transitionTo('DISCOVERY', 'SALUDO');
       }
@@ -245,20 +254,20 @@ export function createConversationHandler(deps: ConversationHandlerDeps) {
       const orderDetails = detectOrderDetails(incomingText);
       if (orderDetails.hasAny) {
         if (!productoActual) {
-          productoActual = chatState.productoActual ?? 'producto';
+          productoActual = freshChatState.productoActual ?? 'producto';
           updates.productoActual = productoActual;
         }
-        const resumen = buildOrderSummary({ ...chatState, productoActual }, orderDetails);
+        const resumen = buildOrderSummary({ ...freshChatState, productoActual }, orderDetails);
         await sendTextIfNeeded(resumen, 'RESUMEN_PEDIDO');
         updates.pedidoEnProceso = true;
         transitionTo('CONFIRMACION', 'RESUMEN_PEDIDO');
       }
 
-      if ((currentState === 'CONFIRMACION' || chatState.estadoActual === 'CONFIRMACION') && isPositiveConfirmation(incomingText)) {
+      if ((currentState === 'CONFIRMACION' || freshChatState.estadoActual === 'CONFIRMACION') && isPositiveConfirmation(incomingText)) {
         await sendTextIfNeeded('Perfecto, procederemos con tu pedido. Te contactaremos a la brevedad para los siguientes pasos.', 'CONFIRMACION_POSITIVA');
         updates.pedidoEnProceso = false;
         transitionTo('CIERRE', 'CONFIRMACION_POSITIVA');
-      } else if ((currentState === 'CONFIRMACION' || chatState.estadoActual === 'CONFIRMACION') && isNegativeConfirmation(incomingText)) {
+      } else if ((currentState === 'CONFIRMACION' || freshChatState.estadoActual === 'CONFIRMACION') && isNegativeConfirmation(incomingText)) {
         await sendTextIfNeeded('Entendido. Indícame los cambios y ajustamos tu pedido sin problema.', 'CONFIRMACION_NEGATIVA');
         updates.pedidoEnProceso = true;
         transitionTo('CONFIRMACION', 'CONFIRMACION_NEGATIVA');

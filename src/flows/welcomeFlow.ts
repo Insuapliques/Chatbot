@@ -3,9 +3,8 @@
 // y proporciona respuestas automatizadas basadas en palabras clave y productos mencionados.
 import { addKeyword } from '@builderbot/bot';
 import { guardarCliente, obtenerCliente } from '../clienteService.js';
-import { answerWithPromptBase, buscarProductoChatbot } from '../services/aiService.js';
+import { answerWithPromptBase } from '../services/aiService.js';
 import { ensurePromptConfig, getPromptConfig } from '../services/promptManager.js';
-import { handleControlIntents } from '../middleware/intentCatalog.js';
 import { getState } from '../services/stateManager.js';
 
 import { db } from '../firebaseConfig.js';
@@ -76,7 +75,8 @@ const inteligenciaArtificialFlow = addKeyword([
   const estadoDoc = await db.collection("liveChatStates").doc(ctx.from).get();
   const estado = estadoDoc.exists ? estadoDoc.data() : null;
 
-  if (estado?.modoHumano) {
+  // Check modoHumano flag (supports both schema formats)
+  if (estado?.modoHumano === true) {
     console.log(`⛔ Usuario ${ctx.from} está siendo atendido por un humano.`);
     return;
   }
@@ -119,17 +119,9 @@ const inteligenciaArtificialFlow = addKeyword([
     return;
   }
 
-  // Skip catalog sending in flows - handled deterministically in handler
-  const catalogoYaEnviado = estado?.catalogoEnviado === true;
-
-  if (!catalogoYaEnviado) {
-    const productoChatbot = await buscarProductoChatbot(ctx.body);
-    if (productoChatbot) {
-      // Catalog will be handled by deterministic service, skip here
-      console.log('[flow] Catalog match found, skipping (handled by deterministic service)');
-      return;
-    }
-  }
+  // NOTE: Catalog sending is handled EXCLUSIVELY by the deterministic catalog service
+  // in catalogo.service.ts. Do NOT attempt to send catalogs here to avoid duplicate sends
+  // and false positives. The custom handler intercepts messages BEFORE flows.
 
   const productoDetectado = extraerProductoDelMensaje(ctx.body);
   if (productoDetectado) {
@@ -144,14 +136,34 @@ const inteligenciaArtificialFlow = addKeyword([
   try {
     await ensurePromptConfig();
     const state = await getState(ctx.from);
+
+    // Merge both state schemas to ensure compatibility
+    const mergedHasSentCatalog = Boolean(
+      state?.has_sent_catalog ??
+      estado?.has_sent_catalog ??
+      estado?.catalogoEnviado
+    );
+
+    const mergedState =
+      state?.state ??
+      estado?.state ??
+      estado?.estadoActual ??
+      undefined;
+
+    const mergedLastIntent =
+      state?.last_intent ??
+      estado?.last_intent ??
+      estado?.ultimoIntent ??
+      undefined;
+
     const respuestaIA = await answerWithPromptBase({
       conversationId: ctx.from,
       userMessage: ctx.body,
       contextMetadata: {
         flow: 'inteligenciaArtificialFlow',
-        state: state?.state ?? estado?.state ?? undefined,
-        has_sent_catalog: Boolean(state?.has_sent_catalog ?? estado?.has_sent_catalog),
-        last_intent: state?.last_intent ?? estado?.last_intent ?? undefined,
+        state: mergedState,
+        has_sent_catalog: mergedHasSentCatalog,
+        last_intent: mergedLastIntent,
         userId: ctx.from,
       },
     });
