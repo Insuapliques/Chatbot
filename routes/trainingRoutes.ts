@@ -12,7 +12,7 @@ const trainingEntrySchema = z.object({
 type TrainingEntry = z.infer<typeof trainingEntrySchema>;
 
 const formatZodErrors = (error: z.ZodError) =>
-    error.errors.map((issue) => ({
+    error.issues.map((issue) => ({
         path: issue.path.join("."),
         message: issue.message,
     }));

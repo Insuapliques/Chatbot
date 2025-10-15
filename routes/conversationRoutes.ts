@@ -8,7 +8,7 @@ const saveConversationSchema = z.object({
 });
 
 const formatZodErrors = (error: z.ZodError) =>
-    error.errors.map((issue) => ({
+    error.issues.map((issue) => ({
         path: issue.path.join("."),
         message: issue.message,
     }));

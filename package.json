@@ -16,39 +16,37 @@
     "test": "vitest run",
     "test:ai": "tsx scripts/test-ai.ts"
   },
-  "packageManager": "pnpm@9.12.2",
+  "packageManager": "pnpm@10.18.3",
   "dependencies": {
     "@builderbot/bot": "^1.2.5",
     "@builderbot/provider-meta": "^1.2.5",
     "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
+    "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "firebase": "^11.4.0",
+    "firebase": "^12.4.0",
     "firebase-admin": "^13.4.0",
     "multer": "^2.0.1",
     "node-fetch": "^3.3.2",
-    "openai": "^4.87.3",
-    "uuid": "^11.1.0",
+    "openai": "^6.3.0",
+    "uuid": "^13.0.0",
     "xlsx": "^0.18.5",
-    "zod": "^3.25.76"
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/multer": "^2.0.0",
-    "@types/node": "^20.19.1",
+    "@types/node": "^24.7.2",
     "@types/node-fetch": "^2.6.12",
-    "@types/uuid": "^10.0.0",
-    "@types/xlsx": "^0.0.35",
-    "@typescript-eslint/eslint-plugin": "^7.2.0",
-    "@typescript-eslint/parser": "^7.4.0",
-    "eslint": "^8.52.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
+    "@typescript-eslint/parser": "^8.46.1",
+    "eslint": "^9.37.0",
     "eslint-plugin-builderbot": "latest",
     "nodemon": "^3.1.0",
-    "rollup": "^4.10.0",
+    "rollup": "^4.52.4",
     "rollup-plugin-typescript2": "^0.36.0",
-    "tsx": "^4.7.1",
-    "typescript": "^5.4.3",
-    "vitest": "^1.6.0"
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   }
 }

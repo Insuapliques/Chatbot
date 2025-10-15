@@ -75,8 +75,7 @@ vi.mock('openai', () => ({
       create: responsesCreateMock,
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    constructor(options: { apiKey: string }) {}
+    constructor(_options: { apiKey: string }) {}
   },
 }));
 
