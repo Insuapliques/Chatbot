@@ -48,16 +48,28 @@ interface NormalizedProduct {
  * Normalize a row into structured product data
  */
 function normalizeRow(row: PriceListRow): NormalizedProduct | null {
+  // Handle multiple column naming patterns
   const name = (
     row.producto ||
     row.Producto ||
     row.PRODUCTO ||
     row.nombre ||
     row.Nombre ||
-    row.NOMBRE
+    row.NOMBRE ||
+    row.REFERENCIA ||
+    row.referencia ||
+    row.Referencia ||
+    row['LISTA DE PRECIOS DE PRENDAS BASICAS'] || // Excel specific
+    row['Lista de Precios de Prendas Basicas']
   )?.toString().trim();
 
   if (!name) {
+    return null;
+  }
+
+  // Skip header rows (common values that appear in headers)
+  const headerKeywords = ['referencia', 'descripcion', 'precio', 'producto', 'nombre', 'talla', 'color'];
+  if (headerKeywords.some(kw => name.toLowerCase() === kw)) {
     return null;
   }
 
@@ -75,13 +87,19 @@ function normalizeRow(row: PriceListRow): NormalizedProduct | null {
     row.PRECIO_BASE ||
     row.precio ||
     row.Precio ||
-    row.PRECIO
+    row.PRECIO ||
+    row['PRECIO DE VENTA'] || // Excel specific
+    row['Precio de Venta'] ||
+    row['__EMPTY_1'] // Excel fallback
   );
 
   const variantPrice = parsePrice(
     row.precio ||
     row.Precio ||
-    row.PRECIO
+    row.PRECIO ||
+    row['PRECIO DE VENTA'] ||
+    row['Precio de Venta'] ||
+    row['__EMPTY_1']
   );
 
   const category = (
@@ -98,7 +116,9 @@ function normalizeRow(row: PriceListRow): NormalizedProduct | null {
     row.Descripcion ||
     row.DESCRIPCION ||
     row.detalle ||
-    row.Detalle
+    row.Detalle ||
+    row['DESCRIPCION'] ||
+    row['__EMPTY'] // Excel fallback
   )?.toString().trim();
 
   const includes = (
@@ -361,12 +381,25 @@ export async function loadPriceListForAI(): Promise<string | null> {
 
     // DEBUG: Log first 3 raw rows to see structure
     if (rows.length > 0) {
-      console.log('[priceListLoader] 🔍 First raw row sample:', JSON.stringify(rows[0], null, 2));
+      console.log('[priceListLoader] 🔍 First raw row:', JSON.stringify(rows[0], null, 2));
       console.log('[priceListLoader] 🔍 Available columns:', Object.keys(rows[0]));
+      if (rows.length > 1) {
+        console.log('[priceListLoader] 🔍 Second raw row:', JSON.stringify(rows[1], null, 2));
+      }
     }
 
     // Normalize and merge products
-    const normalized = rows.map(normalizeRow).filter((p): p is NormalizedProduct => p !== null);
+    let skippedHeaders = 0;
+    const normalized = rows.map((row, idx) => {
+      const result = normalizeRow(row);
+      if (!result && idx < 3) {
+        skippedHeaders++;
+        console.log(`[priceListLoader] ⏭️ Skipped row ${idx + 1} (likely header)`);
+      }
+      return result;
+    }).filter((p): p is NormalizedProduct => p !== null);
+
+    console.log(`[priceListLoader] 📊 Normalized ${normalized.length} products (skipped ${skippedHeaders} header rows)`);
 
     // DEBUG: Log first normalized product
     if (normalized.length > 0) {
