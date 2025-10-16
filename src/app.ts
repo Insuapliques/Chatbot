@@ -14,6 +14,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { auditAccess, authenticateRequest } from './middleware/security.js';
 import { createConversationHandler, MetaMessageCtx } from './conversation/handler.js';
 import { setCatalogoBot } from './services/catalogo.service.js';
+import { setAgentBot } from './services/agentService.js';
 
 const app = express();
 
@@ -83,6 +84,7 @@ const main = async () => {
   });
 
   setCatalogoBot(botInstance);
+  setAgentBot(botInstance);
 
   const { httpServer } = botInstance;
 

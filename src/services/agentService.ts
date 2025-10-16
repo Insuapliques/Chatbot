@@ -1,10 +1,17 @@
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions';
+import type { CoreClass } from '@builderbot/bot';
 import { db } from '../firebaseConfig.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import { findProductoByMessage } from './productos.service.js';
-import { intentarEnviarCatalogo } from './catalogo.service.js';
 import { loadPriceListForAI } from './priceListLoader.js';
+
+// Global bot instance reference for catalog sending
+let agentBotInstance: CoreClass | null = null;
+
+export function setAgentBot(bot: CoreClass): void {
+  agentBotInstance = bot;
+}
 
 // ============================================================================
 // TYPES
@@ -207,20 +214,143 @@ async function enviarCatalogo(tipo: string, phone: string): Promise<object> {
   try {
     console.log(`[agentService] 📄 Enviando catálogo de tipo: "${tipo}" a ${phone}`);
 
-    // Construir mensaje simulado para el servicio de catálogo
-    const mensajeSimulado = `catalogo ${tipo}`;
-    const enviado = await intentarEnviarCatalogo(phone, mensajeSimulado);
-
-    if (enviado) {
+    if (!agentBotInstance || !agentBotInstance.provider) {
+      console.error('[agentService] Bot instance or provider not available');
       return {
-        success: true,
-        message: `Catálogo de ${tipo} enviado exitosamente`,
+        success: false,
+        error: 'Provider not initialized',
       };
     }
 
+    const provider = agentBotInstance.provider;
+
+    // Search for product by keyword
+    const producto = await findProductoByMessage(`catalogo ${tipo}`);
+
+    if (!producto) {
+      return {
+        success: false,
+        message: `No se encontró un catálogo para "${tipo}". Tipos disponibles: chompas, joggers, polos, gorras, casacas.`,
+      };
+    }
+
+    // Prepare caption and fallback
+    const caption = producto.respuesta?.trim()?.length ? producto.respuesta : `Aquí tienes el catálogo de ${tipo}.`;
+    let fallbackText = caption;
+    if (producto.url) {
+      fallbackText = `${caption}\n${producto.url}`.trim();
+    }
+
+    let fileUrl: string | null = null;
+    let fileType: string = 'text';
+    let loggedText = caption;
+
+    // Send via appropriate method based on product type
+    try {
+      if (producto.tipo === 'pdf' && producto.url) {
+        await provider.sendMessageMeta({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: phone,
+          type: 'document',
+          document: {
+            link: producto.url,
+            caption,
+          },
+        });
+        fileUrl = producto.url;
+        fileType = 'document';
+        loggedText = caption;
+      } else if (producto.tipo === 'image' && producto.url) {
+        await provider.sendMessageMeta({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: phone,
+          type: 'image',
+          image: {
+            link: producto.url,
+            caption,
+          },
+        });
+        fileUrl = producto.url;
+        fileType = 'image';
+        loggedText = caption;
+      } else if (producto.tipo === 'video' && producto.url) {
+        await provider.sendMessageMeta({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: phone,
+          type: 'video',
+          video: {
+            link: producto.url,
+            caption,
+          },
+        });
+        fileUrl = producto.url;
+        fileType = 'video';
+        loggedText = caption;
+      } else if (producto.tipo === 'url' && producto.url) {
+        const outbound = `${caption}\n${producto.url}`.trim();
+        await provider.sendMessage(phone, outbound, {});
+        fileUrl = producto.url;
+        fileType = 'text';
+        loggedText = outbound;
+      } else {
+        await provider.sendMessage(phone, fallbackText, {});
+        fileType = 'text';
+        fileUrl = producto.url ?? null;
+        loggedText = fallbackText;
+      }
+    } catch (sendError) {
+      console.error('[agentService] Media send failed, falling back to text:', sendError);
+
+      // Fallback to text
+      await provider.sendMessage(phone, fallbackText, {});
+      fileType = 'text';
+      fileUrl = producto.url ?? null;
+      loggedText = fallbackText;
+    }
+
+    // Log to liveChat
+    await db.collection('liveChat').add({
+      user: phone,
+      text: loggedText,
+      fileUrl,
+      fileType,
+      timestamp: FieldValue.serverTimestamp(),
+      origen: 'bot',
+    });
+
+    // Update state
+    const stateRef = db.collection('liveChatStates').doc(phone);
+    await stateRef.set({
+      catalogoEnviado: true,
+      has_sent_catalog: true,
+      catalogoRef: producto.keyword,
+      catalogoTimestamp: FieldValue.serverTimestamp(),
+      catalogoIntentos: 0,
+      estadoActual: 'CATALOGO_ENVIADO',
+      state: 'CATALOG_SENT',
+      ultimoIntent: 'catalogo',
+      last_intent: 'catalogo',
+      productoActual: producto.keyword,
+      ultimoCambio: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    // Log catalog sent
+    await db.collection('logs').doc('catalogSent').collection('entries').add({
+      phone,
+      catalogRef: producto.keyword,
+      source: 'agentService',
+      at: FieldValue.serverTimestamp(),
+    });
+
+    console.log(`[agentService] ✅ Catálogo "${producto.keyword}" enviado exitosamente`);
+
     return {
-      success: false,
-      message: `No se pudo enviar el catálogo de ${tipo}. Puede que no exista o ya fue enviado.`,
+      success: true,
+      message: `Catálogo de ${tipo} enviado exitosamente`,
+      catalogRef: producto.keyword,
     };
   } catch (error) {
     console.error('[agentService] Error en enviarCatalogo:', error);

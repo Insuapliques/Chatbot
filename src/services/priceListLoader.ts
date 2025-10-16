@@ -359,8 +359,22 @@ export async function loadPriceListForAI(): Promise<string | null> {
 
     console.log(`[priceListLoader] 📊 Loaded ${rows.length} rows from XLSX`);
 
+    // DEBUG: Log first 3 raw rows to see structure
+    if (rows.length > 0) {
+      console.log('[priceListLoader] 🔍 First raw row sample:', JSON.stringify(rows[0], null, 2));
+      console.log('[priceListLoader] 🔍 Available columns:', Object.keys(rows[0]));
+    }
+
     // Normalize and merge products
     const normalized = rows.map(normalizeRow).filter((p): p is NormalizedProduct => p !== null);
+
+    // DEBUG: Log first normalized product
+    if (normalized.length > 0) {
+      console.log('[priceListLoader] 🔍 First normalized product:', JSON.stringify(normalized[0], null, 2));
+    } else {
+      console.warn('[priceListLoader] ⚠️ No products were normalized! All rows returned null.');
+    }
+
     const merged = mergeProducts(normalized);
 
     console.log(`[priceListLoader] ✅ Processed into ${merged.length} unique products (${merged.filter((p) => p.type === 'combo').length} combos, ${merged.filter((p) => p.type === 'unit').length} units)`);
