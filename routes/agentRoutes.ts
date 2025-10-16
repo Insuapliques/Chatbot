@@ -254,18 +254,6 @@ router.get('/tools', async (_req, res) => {
           motivo: 'consulta compleja',
         },
       },
-      {
-        name: 'calcularPrecio',
-        description: 'Calcula precios estimados según cantidad y tipo',
-        parameters: {
-          cantidad: 'number - Cantidad de unidades',
-          tipo: 'string - Tipo de prenda',
-        },
-        example: {
-          cantidad: 50,
-          tipo: 'chompa',
-        },
-      },
     ];
 
     res.json({
@@ -273,6 +261,7 @@ router.get('/tools', async (_req, res) => {
       data: {
         tools,
         totalTools: tools.length,
+        note: 'El agente consulta precios directamente desde la lista de precios en Excel (archivo_entrenamiento). No necesita herramienta calcularPrecio.',
       },
     });
   } catch (error: any) {
@@ -437,8 +426,12 @@ router.get('/health', async (_req, res) => {
           promptPath,
         },
         tools: {
-          available: 4,
-          names: ['buscarProductoFirestore', 'enviarCatalogo', 'transferirAAsesor', 'calcularPrecio'],
+          available: 3,
+          names: ['buscarProductoFirestore', 'enviarCatalogo', 'transferirAAsesor'],
+        },
+        priceList: {
+          enabled: true,
+          source: 'settings/archivo_entrenamiento (Excel)',
         },
       },
     };

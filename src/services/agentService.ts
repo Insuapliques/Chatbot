@@ -4,6 +4,7 @@ import { db } from '../firebaseConfig.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import { findProductoByMessage } from './productos.service.js';
 import { intentarEnviarCatalogo } from './catalogo.service.js';
+import { loadPriceListForAI } from './priceListLoader.js';
 
 // ============================================================================
 // TYPES
@@ -91,7 +92,7 @@ function getDefaultInstructions(): string {
 
 Tu objetivo es ayudar a los clientes a:
 - Encontrar productos en el catálogo
-- Recibir información sobre precios y cantidades
+- Recibir información sobre precios y cantidades (consulta la lista de precios que se te proporciona)
 - Solicitar asesoría personalizada
 - Conectarse con un asesor humano cuando sea necesario
 
@@ -101,7 +102,9 @@ Tienes acceso a las siguientes herramientas:
 1. buscarProductoFirestore - para buscar productos en la base de datos
 2. enviarCatalogo - para enviar catálogos PDF/imágenes de productos
 3. transferirAAsesor - para transferir la conversación a un humano
-4. calcularPrecio - para calcular precios según cantidad y tipo de producto
+
+IMPORTANTE: Para consultar precios, usa directamente la LISTA DE PRECIOS que se te proporciona en el contexto.
+NO inventes precios. Si un producto no está en la lista, informa al cliente y ofrece conectarlo con un asesor.
 
 Usa estas herramientas de forma inteligente según la intención del usuario.`;
 }
@@ -159,27 +162,6 @@ const tools: ChatCompletionTool[] = [
           },
         },
         required: ['motivo'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'calcularPrecio',
-      description: 'Calcula el precio estimado de un pedido según la cantidad y tipo de prenda. Útil cuando el usuario pregunta "cuánto cuesta" o "cuál es el precio" para cantidades específicas.',
-      parameters: {
-        type: 'object',
-        properties: {
-          cantidad: {
-            type: 'number',
-            description: 'Cantidad de unidades a cotizar',
-          },
-          tipo: {
-            type: 'string',
-            description: 'Tipo de prenda (ej: "chompa", "polo", "jogger", "gorra")',
-          },
-        },
-        required: ['cantidad', 'tipo'],
       },
     },
   },
@@ -291,66 +273,6 @@ async function transferirAAsesor(phone: string, motivo: string): Promise<object>
   }
 }
 
-async function calcularPrecio(cantidad: number, tipo: string): Promise<object> {
-  try {
-    console.log(`[agentService] 💰 Calculando precio: ${cantidad} unidades de ${tipo}`);
-
-    // Aquí puedes integrar con tu sistema de precios real
-    // Por ahora, devuelvo un cálculo de ejemplo basado en rangos comunes
-
-    const tipoNormalizado = tipo.toLowerCase();
-    let precioUnitario = 0;
-
-    // Precios base de ejemplo (ajusta según tu negocio)
-    const preciosBase: Record<string, number> = {
-      'chompa': 25,
-      'chompas': 25,
-      'polo': 15,
-      'polos': 15,
-      'jogger': 30,
-      'joggers': 30,
-      'gorra': 12,
-      'gorras': 12,
-      'casaca': 40,
-      'casacas': 40,
-    };
-
-    precioUnitario = preciosBase[tipoNormalizado] ?? 20; // Precio por defecto
-
-    // Descuentos por volumen
-    let descuento = 0;
-    if (cantidad >= 100) {
-      descuento = 0.20; // 20% descuento
-    } else if (cantidad >= 50) {
-      descuento = 0.15; // 15% descuento
-    } else if (cantidad >= 20) {
-      descuento = 0.10; // 10% descuento
-    }
-
-    const precioConDescuento = precioUnitario * (1 - descuento);
-    const total = precioConDescuento * cantidad;
-
-    return {
-      success: true,
-      cotizacion: {
-        tipo,
-        cantidad,
-        precioUnitario,
-        descuento: `${(descuento * 100).toFixed(0)}%`,
-        precioConDescuento: precioConDescuento.toFixed(2),
-        total: total.toFixed(2),
-        moneda: 'PEN', // Ajustar según tu moneda
-      },
-      message: `Cotización: ${cantidad} ${tipo} a S/ ${precioConDescuento.toFixed(2)} c/u = S/ ${total.toFixed(2)} total`,
-    };
-  } catch (error) {
-    console.error('[agentService] Error en calcularPrecio:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Error desconocido',
-    };
-  }
-}
 
 // ============================================================================
 // TOOL EXECUTION DISPATCHER
@@ -370,9 +292,6 @@ async function executeTool(
 
     case 'transferirAAsesor':
       return transferirAAsesor(phone, args.motivo as string);
-
-    case 'calcularPrecio':
-      return calcularPrecio(args.cantidad as number, args.tipo as string);
 
     default:
       throw new Error(`Herramienta desconocida: ${toolName}`);
@@ -446,24 +365,38 @@ export async function executeAgent(context: AgentContext): Promise<AgentResponse
     // Load agent instructions from Firestore
     const instructions = await loadAgentInstructions();
 
+    // Load price list from Excel file in Firebase Storage
+    const priceListContext = await loadPriceListForAI();
+
     // Load conversation history automatically if not provided
     let conversationHistory = context.conversationHistory;
     if (!conversationHistory || conversationHistory.length === 0) {
       conversationHistory = await loadConversationHistory(context.phone, CONVERSATION_HISTORY_LIMIT);
     }
 
-    // Build conversation messages
+    // Build conversation messages with price list context
     const messages: ChatCompletionMessageParam[] = [
       {
         role: 'system',
         content: instructions,
       },
-      ...conversationHistory,
-      {
-        role: 'user',
-        content: context.userMessage,
-      },
     ];
+
+    // Add price list context as a separate system message
+    if (priceListContext) {
+      messages.push({
+        role: 'system',
+        content: priceListContext,
+      });
+      console.log('[agentService] 💰 Lista de precios cargada y agregada al contexto');
+    }
+
+    // Add conversation history and current message
+    messages.push(...conversationHistory);
+    messages.push({
+      role: 'user',
+      content: context.userMessage,
+    });
 
     const client = getOpenAI();
     const controller = new AbortController();
