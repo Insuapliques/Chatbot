@@ -3,8 +3,8 @@
 // y proporciona respuestas automatizadas basadas en palabras clave y productos mencionados.
 import { addKeyword } from '@builderbot/bot';
 import { guardarCliente, obtenerCliente } from '../clienteService.js';
-import { answerWithPromptBase } from '../services/aiService.js';
-import { ensurePromptConfig, getPromptConfig } from '../services/promptManager.js';
+import { executeAgent } from '../services/agentService.js';
+import { ensurePromptConfig } from '../services/promptManager.js';
 import { getState } from '../services/stateManager.js';
 
 import { db } from '../firebaseConfig.js';
@@ -156,20 +156,22 @@ const inteligenciaArtificialFlow = addKeyword([
       estado?.ultimoIntent ??
       undefined;
 
-    const respuestaIA = await answerWithPromptBase({
-      conversationId: ctx.from,
+    // Use agentService with automatic conversation history loading and function calling
+    const agentResponse = await executeAgent({
+      phone: ctx.from,
       userMessage: ctx.body,
-      contextMetadata: {
-        flow: 'inteligenciaArtificialFlow',
-        state: mergedState,
-        has_sent_catalog: mergedHasSentCatalog,
-        last_intent: mergedLastIntent,
-        userId: ctx.from,
-      },
+      // conversationHistory is loaded automatically from liveChat
     });
 
     const mensaje =
-      respuestaIA.text || "Lo siento, ¿puedes repetirlo de otra forma?";
+      agentResponse.text || "Lo siento, ¿puedes repetirlo de otra forma?";
+
+    // Log tool calls for debugging
+    if (agentResponse.toolCalls && agentResponse.toolCalls.length > 0) {
+      console.log(`[welcomeFlow] 🛠️ Agent used ${agentResponse.toolCalls.length} tool(s):`,
+        agentResponse.toolCalls.map(t => `${t.toolName}(${JSON.stringify(t.arguments)})`).join(', ')
+      );
+    }
 
     await guardarConversacionEnHistorial(ctx, mensaje, "bot");
     await flowDynamic(mensaje);
@@ -179,27 +181,22 @@ const inteligenciaArtificialFlow = addKeyword([
       .set(
         {
           modoHumano: false,
-          lastAiLatencyMs: respuestaIA.latencyMs,
-          lastAiUsedFallback: respuestaIA.usedFallback,
+          lastAiLatencyMs: agentResponse.latencyMs,
+          lastAiUsedFallback: agentResponse.usedFallback,
         },
         { merge: true },
       );
 
-    if (respuestaIA.usedFallback) {
+    if (agentResponse.usedFallback) {
       console.warn('⚠️ Fallback IA utilizado para la última respuesta.');
     }
 
-    if (respuestaIA.closingTriggered) {
-      const config = await getPromptConfig();
-      const cierre = respuestaIA.closingMenu || config.closingMenu;
-      if (cierre) {
-        await flowDynamic(cierre);
-      }
-      await db
-        .collection("liveChatStates")
-        .doc(ctx.from)
-        .set({ estado: "cierre" }, { merge: true });
+    if (agentResponse.error) {
+      console.error('⚠️ Error en agentService:', agentResponse.error);
     }
+
+    // Note: agentService doesn't have closingTriggered like aiService
+    // Closing logic can be handled by the transferirAAsesor tool or manually
   } catch (error) {
     console.error("❌ Error obteniendo respuesta IA:", error);
     const fallbackMensaje =

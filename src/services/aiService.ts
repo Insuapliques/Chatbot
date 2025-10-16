@@ -45,6 +45,10 @@ const CATALOG_COLLECTION = 'catalog_index';
 const MAX_CATALOG_MATCHES = Number(process.env.LLM_CATALOG_MAX_MATCHES ?? 3);
 const VERSION_PATTERN = /^(\d{4})-(\d{2})$/;
 
+// Conversation history configuration
+const CONVERSATION_HISTORY_LIMIT = Number(process.env.CONVERSATION_HISTORY_LIMIT ?? 10);
+const LIVECHAT_COLLECTION = 'liveChat';
+
 interface FallbackState {
   failureCount: number;
   openUntil: number;
@@ -393,8 +397,61 @@ interface StoredMemory {
   type: string;
 }
 
+interface ConversationMessage {
+  text: string;
+  origen: 'cliente' | 'bot' | 'operador';
+  timestamp: any;
+}
+
 function memoryFingerprint(type: string, text: string): string {
   return `${type}|${text.toLowerCase()}`;
+}
+
+async function fetchRecentConversationHistory(userId: string, limit: number): Promise<ConversationMessage[]> {
+  try {
+    const snapshot = await db
+      .collection(LIVECHAT_COLLECTION)
+      .where('user', '==', userId)
+      .orderBy('timestamp', 'desc')
+      .limit(Math.max(1, limit))
+      .get();
+
+    if (!snapshot || snapshot.empty) {
+      return [];
+    }
+
+    // Reverse to get chronological order (oldest first)
+    return snapshot.docs
+      .map((doc) => {
+        const data = doc.data();
+        return {
+          text: data.text || '',
+          origen: data.origen || 'cliente',
+          timestamp: data.timestamp,
+        };
+      })
+      .filter((msg) => msg.text.trim().length > 0)
+      .reverse(); // Chronological order
+  } catch (error) {
+    console.warn(`[aiService] No fue posible cargar historial de conversación para ${userId}:`, error);
+    return [];
+  }
+}
+
+function buildConversationContext(messages: ConversationMessage[]): string | undefined {
+  if (!messages.length) {
+    return undefined;
+  }
+
+  const lines = messages.map((msg) => {
+    const role = msg.origen === 'cliente' ? 'Usuario' : msg.origen === 'bot' ? 'Asistente' : 'Operador';
+    return `${role}: ${msg.text}`;
+  });
+
+  const header = 'Historial reciente de esta conversación:';
+  const instruction = 'Usa este contexto para dar respuestas coherentes y evitar repetir información ya mencionada.';
+
+  return `${header}\n${lines.join('\n')}\n${instruction}`;
 }
 
 async function fetchRecentUserMemories(userId: string, limit: number): Promise<StoredMemory[]> {
@@ -417,11 +474,11 @@ async function fetchRecentUserMemories(userId: string, limit: number): Promise<S
     const snapshot = await query.get();
 
     return snapshot.docs
-      .map((doc) => doc.data())
-      .filter((data): data is { text: string; type: string } => {
+      .map((doc: any) => doc.data())
+      .filter((data: any): data is { text: string; type: string } => {
         return Boolean(data && typeof data.text === 'string' && typeof data.type === 'string');
       })
-      .map((data) => ({
+      .map((data: any) => ({
         text: data.text.trim(),
         type: data.type,
       }));
@@ -538,6 +595,7 @@ async function callOpenAI(
   attempt: number,
   memoryContext?: string,
   priceListContext?: string,
+  conversationContext?: string,
 ): Promise<OpenAIResult> {
   const start = Date.now();
   const controller = new AbortController();
@@ -550,6 +608,12 @@ async function callOpenAI(
     // Add price list context if available
     if (priceListContext) {
       systemMessages.push({ role: 'system' as const, content: priceListContext });
+    }
+
+    // Add conversation history context if available (IMPORTANT: before memory)
+    const sanitizedConversation = conversationContext ? sanitizeMessage(conversationContext) : '';
+    if (sanitizedConversation) {
+      systemMessages.push({ role: 'system' as const, content: sanitizedConversation });
     }
 
     // Add memory context if available
@@ -602,6 +666,8 @@ async function callOpenAI(
       systemPromptPreview: config.promptBase.substring(0, 200) + '...',
       priceListLoaded: !!priceListContext,
       priceListLength: priceListContext?.length || 0,
+      conversationContextLength: sanitizedConversation?.length || 0,
+      conversationContextLoaded: !!conversationContext,
       memoryContextLength: sanitizedMemory.length,
       userMessageLength: sanitizedMessage.length,
       userMessagePreview: sanitizedMessage.substring(0, 100),
@@ -759,10 +825,24 @@ export async function answerWithPromptBase(options: AnswerOptions): Promise<Answ
   const userId = resolveUserId(options);
   let recentMemories: StoredMemory[] = [];
   let memorySystemContext: string | undefined;
+  let conversationContext: string | undefined;
 
   if (userId) {
+    // Load user memories (preferences, facts)
     recentMemories = await fetchRecentUserMemories(userId, MEMORY_TOP_K);
     memorySystemContext = buildMemorySystemContext(recentMemories);
+
+    // Load conversation history (recent messages)
+    const conversationHistory = await fetchRecentConversationHistory(userId, CONVERSATION_HISTORY_LIMIT);
+    conversationContext = buildConversationContext(conversationHistory);
+
+    if (conversationContext) {
+      console.log('[aiService] 💬 Historial conversacional cargado:', {
+        userId,
+        messageCount: conversationHistory.length,
+        contextLength: conversationContext.length,
+      });
+    }
   }
 
   const catalogContext = await buildCatalogPromptContext(sanitizedMessage, options.contextMetadata);
@@ -791,6 +871,7 @@ export async function answerWithPromptBase(options: AnswerOptions): Promise<Answ
         attempt + 1,
         memorySystemContext,
         priceListContext ?? undefined,
+        conversationContext,
       );
       const finalText = ensureCatalogCitation(openAiResult.text, catalogContext?.normalizedVersion);
       if (userId) {
@@ -818,9 +899,11 @@ export async function answerWithPromptBase(options: AnswerOptions): Promise<Answ
   if (isFallbackAvailable()) {
     try {
       const config = await getPromptConfig();
+      const sanitizedFallbackConversation = conversationContext ? sanitizeMessage(conversationContext) : '';
       const sanitizedFallbackMemory = memorySystemContext ? sanitizeMessage(memorySystemContext) : '';
+      const conversationPrefix = sanitizedFallbackConversation ? `${sanitizedFallbackConversation}\n\n` : '';
       const memoryPrefix = sanitizedFallbackMemory ? `${sanitizedFallbackMemory}\n\n` : '';
-      const fallbackPrompt = `${config.promptBase}\n\n${memoryPrefix}Usuario: ${messageWithCatalog}`;
+      const fallbackPrompt = `${config.promptBase}\n\n${conversationPrefix}${memoryPrefix}Usuario: ${messageWithCatalog}`;
       const fallbackResult = await callFallbackLLM(fallbackPrompt);
       registerFallbackSuccess();
       const finalText = ensureCatalogCitation(fallbackResult.text, catalogContext?.normalizedVersion);

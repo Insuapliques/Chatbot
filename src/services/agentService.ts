@@ -38,6 +38,7 @@ const DEFAULT_MODEL = process.env.LLM_MODEL ?? 'gpt-4o';
 const DEFAULT_TIMEOUT = Number(process.env.LLM_TIMEOUT_MS ?? 60_000);
 const MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES ?? 2);
 const FIRESTORE_PROMPT_PATH = process.env.FIRESTORE_PROMPT_DOC_PATH ?? 'settings/prompts';
+const CONVERSATION_HISTORY_LIMIT = Number(process.env.CONVERSATION_HISTORY_LIMIT ?? 10);
 
 let openAiClient: OpenAI | null = null;
 
@@ -379,6 +380,58 @@ async function executeTool(
 }
 
 // ============================================================================
+// CONVERSATION HISTORY LOADING
+// ============================================================================
+
+async function loadConversationHistory(phone: string, limit: number): Promise<ChatCompletionMessageParam[]> {
+  try {
+    const snapshot = await db
+      .collection('liveChat')
+      .where('user', '==', phone)
+      .orderBy('timestamp', 'desc')
+      .limit(Math.max(1, limit))
+      .get();
+
+    if (!snapshot || snapshot.empty) {
+      return [];
+    }
+
+    // Convert to OpenAI format and reverse for chronological order
+    const messages: ChatCompletionMessageParam[] = snapshot.docs
+      .map((doc) => {
+        const data = doc.data();
+        const text = data.text || '';
+        const origen = data.origen || 'cliente';
+
+        if (!text.trim()) {
+          return null;
+        }
+
+        // Map origen to OpenAI roles
+        const role: 'user' | 'assistant' = origen === 'cliente' ? 'user' : 'assistant';
+
+        return {
+          role,
+          content: text,
+        } as ChatCompletionMessageParam;
+      })
+      .filter((msg): msg is ChatCompletionMessageParam => msg !== null)
+      .reverse(); // Chronological order (oldest first)
+
+    console.log('[agentService] 💬 Historial conversacional cargado:', {
+      phone,
+      messageCount: messages.length,
+      preview: messages.slice(-3).map((m) => `${m.role}: ${m.content?.toString().substring(0, 50)}...`),
+    });
+
+    return messages;
+  } catch (error) {
+    console.warn(`[agentService] No fue posible cargar historial de conversación para ${phone}:`, error);
+    return [];
+  }
+}
+
+// ============================================================================
 // MAIN AGENT EXECUTION
 // ============================================================================
 
@@ -393,13 +446,19 @@ export async function executeAgent(context: AgentContext): Promise<AgentResponse
     // Load agent instructions from Firestore
     const instructions = await loadAgentInstructions();
 
+    // Load conversation history automatically if not provided
+    let conversationHistory = context.conversationHistory;
+    if (!conversationHistory || conversationHistory.length === 0) {
+      conversationHistory = await loadConversationHistory(context.phone, CONVERSATION_HISTORY_LIMIT);
+    }
+
     // Build conversation messages
     const messages: ChatCompletionMessageParam[] = [
       {
         role: 'system',
         content: instructions,
       },
-      ...(context.conversationHistory ?? []),
+      ...conversationHistory,
       {
         role: 'user',
         content: context.userMessage,

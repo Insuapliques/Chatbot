@@ -1,9 +1,11 @@
 import type { CoreClass } from '@builderbot/bot';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { db } from '../firebaseConfig.js';
 import { findProductoByMessage, isGenericCatalogRequest, buildCatalogListMessage } from './productos.service.js';
 
 const REENVIO_REGEX = /(reenvia|otra vez|de nuevo|nuevamente|again|resend)/i;
+const CATALOG_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutos
+const MAX_RESEND_ATTEMPTS = 3; // Después de 3 intentos, siempre envía
 
 let botInstance: CoreClass | null = null;
 
@@ -12,8 +14,19 @@ export function setCatalogoBot(bot: CoreClass): void {
 }
 
 /**
- * Deterministic catalog sending service
- * Returns true if a catalog was sent OR if catalog list was shown, false otherwise
+ * Deterministic catalog sending service with smart resend logic
+ *
+ * Resend behavior:
+ * - First request: Always sends catalog
+ * - Repeated requests for SAME catalog within 2min:
+ *   - Attempt 1: Blocks send, increments counter
+ *   - Attempt 2: Blocks send, increments counter
+ *   - Attempt 3+: Always sends (user is insisting)
+ * - After 2min cooldown: Resets counter and sends
+ * - Keywords like "otra vez", "reenvia": Always sends immediately
+ * - Different catalog: Always sends, resets counter
+ *
+ * @returns true if a catalog was sent OR if catalog list was shown, false otherwise
  */
 export async function intentarEnviarCatalogo(phone: string, text: string): Promise<boolean> {
   if (!botInstance) {
@@ -48,13 +61,69 @@ export async function intentarEnviarCatalogo(phone: string, text: string): Promi
   if (catalogAlreadySent && producto && !wantsResend) {
     const lastCatalogRef = state?.catalogoRef || state?.productoActual;
 
-    // Allow sending a different catalog, but block same catalog
+    // Check if it's the same catalog
     if (lastCatalogRef === producto.keyword) {
-      console.log(`[catalogo] Same catalog "${producto.keyword}" already sent, skipping`);
-      return false;
+      // Get timestamp of last catalog send
+      const lastCatalogTimestamp = state?.catalogoTimestamp;
+      const catalogoIntentos = (state?.catalogoIntentos || 0) as number;
+
+      let shouldBlock = false;
+      let timeSinceLastSend = Infinity;
+
+      if (lastCatalogTimestamp) {
+        // Handle both Firestore Timestamp and plain objects with seconds
+        const lastSendMs = typeof lastCatalogTimestamp.toMillis === 'function'
+          ? lastCatalogTimestamp.toMillis()
+          : (lastCatalogTimestamp.seconds || 0) * 1000;
+
+        timeSinceLastSend = Date.now() - lastSendMs;
+      }
+
+      // Decision logic:
+      // 1. If user has tried < MAX_RESEND_ATTEMPTS and time < COOLDOWN: block
+      // 2. If user has tried >= MAX_RESEND_ATTEMPTS: always send (user is insisting)
+      // 3. If time >= COOLDOWN: reset counter and send
+      if (catalogoIntentos < MAX_RESEND_ATTEMPTS && timeSinceLastSend < CATALOG_COOLDOWN_MS) {
+        shouldBlock = true;
+        console.log(
+          `[catalogo] Same catalog "${producto.keyword}" requested again ` +
+          `(attempt ${catalogoIntentos + 1}/${MAX_RESEND_ATTEMPTS}, ` +
+          `${Math.round(timeSinceLastSend / 1000)}s ago). Incrementing counter.`
+        );
+
+        // Increment attempt counter
+        await stateRef.set({
+          catalogoIntentos: catalogoIntentos + 1,
+          ultimoCambio: FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        // Log blocked resend attempt
+        await db.collection('logs').doc('catalogResendBlocked').collection('entries').add({
+          phone,
+          catalogRef: producto.keyword,
+          attempt: catalogoIntentos + 1,
+          timeSinceLastSendMs: timeSinceLastSend,
+          at: FieldValue.serverTimestamp(),
+        });
+      } else if (catalogoIntentos >= MAX_RESEND_ATTEMPTS) {
+        console.log(
+          `[catalogo] User insisted ${catalogoIntentos} times, sending catalog "${producto.keyword}" again`
+        );
+        // Reset counter after sending
+      } else {
+        console.log(
+          `[catalogo] Cooldown expired (${Math.round(timeSinceLastSend / 1000)}s), ` +
+          `resending catalog "${producto.keyword}"`
+        );
+        // Reset counter after cooldown
+      }
+
+      if (shouldBlock) {
+        return false;
+      }
     } else {
       console.log(`[catalogo] Different catalog requested: "${producto.keyword}" vs "${lastCatalogRef}"`);
-      // Allow different catalog to be sent
+      // Allow different catalog to be sent, reset counter
     }
   }
 
@@ -196,6 +265,8 @@ export async function intentarEnviarCatalogo(phone: string, text: string): Promi
     catalogoEnviado: true,
     has_sent_catalog: true,
     catalogoRef: producto.keyword,
+    catalogoTimestamp: FieldValue.serverTimestamp(), // Track when catalog was sent
+    catalogoIntentos: 0, // Reset attempt counter after successful send
     estadoActual: 'CATALOGO_ENVIADO',
     state: 'CATALOG_SENT',
     ultimoIntent: 'catalogo',
