@@ -16,8 +16,9 @@ Documentación completa de endpoints para integrar el agente de OpenAI con tu fr
 2. [Prompt Management](#prompt-management)
 3. [Tools & Capabilities](#tools--capabilities)
 4. [Conversation State](#conversation-state)
-5. [Health Check](#health-check)
-6. [Ejemplos de Uso](#ejemplos-de-uso)
+5. [Panel Management (Live Chat Control)](#panel-management-live-chat-control)
+6. [Health Check](#health-check)
+7. [Ejemplos de Uso](#ejemplos-de-uso)
 
 ---
 
@@ -548,9 +549,336 @@ async function resetConversation(phone: string) {
 
 ---
 
+## Panel Management (Live Chat Control)
+
+### 9. Obtener Conversaciones Activas
+
+Obtiene una lista de todas las conversaciones activas en las últimas 24 horas.
+
+**GET** `/panel/conversations?limit=50`
+
+#### Query Parameters
+- `limit` (optional): Número máximo de conversaciones a retornar (default: 50)
+
+#### Response Success (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "conversations": [
+      {
+        "phone": "51987654321",
+        "estadoActual": "DISCOVERY",
+        "modoHumano": false,
+        "productoActual": "chompas",
+        "catalogoEnviado": true,
+        "pedidoEnProceso": false,
+        "ultimoContacto": "2025-10-17T10:30:00Z",
+        "lastMessage": {
+          "text": "Hola, quiero información sobre chompas",
+          "timestamp": "2025-10-17T10:30:00Z",
+          "origen": "cliente"
+        },
+        "unreadCount": 1
+      }
+    ],
+    "total": 1
+  }
+}
+```
+
+#### Ejemplo React
+
+```tsx
+function ConversationsList() {
+  const [conversations, setConversations] = useState([]);
+
+  useEffect(() => {
+    fetch('http://localhost:3008/panel/conversations?limit=50', {
+      headers: { 'X-Api-Key': 'your-api-key' },
+    })
+      .then(res => res.json())
+      .then(data => setConversations(data.data.conversations));
+  }, []);
+
+  return (
+    <ul>
+      {conversations.map((conv) => (
+        <li key={conv.phone}>
+          <strong>{conv.phone}</strong> - {conv.lastMessage?.text}
+          {conv.unreadCount > 0 && <span className="badge">{conv.unreadCount}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+---
+
+### 10. Tomar Control de Conversación
+
+Activa el modo humano para una conversación específica. Cuando está activo, el bot deja de responder automáticamente.
+
+**POST** `/panel/takeover/:phone`
+
+#### URL Parameters
+- `phone` (required): Número de teléfono de la conversación
+
+#### Response Success (200)
+
+```json
+{
+  "success": true,
+  "message": "Control tomado exitosamente",
+  "phone": "51987654321",
+  "modoHumano": true
+}
+```
+
+#### Ejemplo React
+
+```tsx
+async function takeoverConversation(phone: string) {
+  const response = await fetch(`http://localhost:3008/panel/takeover/${phone}`, {
+    method: 'POST',
+    headers: { 'X-Api-Key': 'your-api-key' },
+  });
+
+  const data = await response.json();
+
+  if (data.success) {
+    alert('Control tomado. Ahora puedes responder manualmente.');
+  }
+}
+```
+
+---
+
+### 11. Liberar Control de Conversación
+
+Desactiva el modo humano, permitiendo que el bot vuelva a responder automáticamente.
+
+**POST** `/panel/release/:phone`
+
+#### URL Parameters
+- `phone` (required): Número de teléfono de la conversación
+
+#### Response Success (200)
+
+```json
+{
+  "success": true,
+  "message": "Control liberado exitosamente",
+  "phone": "51987654321",
+  "modoHumano": false
+}
+```
+
+#### Ejemplo React
+
+```tsx
+async function releaseConversation(phone: string) {
+  const response = await fetch(`http://localhost:3008/panel/release/${phone}`, {
+    method: 'POST',
+    headers: { 'X-Api-Key': 'your-api-key' },
+  });
+
+  const data = await response.json();
+
+  if (data.success) {
+    alert('Control liberado. El bot responderá automáticamente.');
+  }
+}
+```
+
+---
+
+### 12. Enviar Mensaje como Operador
+
+Envía un mensaje en nombre del operador humano. **Solo funciona cuando el modo humano está activo**.
+
+**POST** `/panel/send`
+
+#### Request Body
+
+```json
+{
+  "phone": "51987654321",
+  "text": "Hola, soy María del equipo de Mimétisa. ¿En qué puedo ayudarte?"
+}
+```
+
+#### Response Success (200)
+
+```json
+{
+  "success": true,
+  "message": "Mensaje enviado exitosamente"
+}
+```
+
+#### Response Error (403)
+
+```json
+{
+  "success": false,
+  "error": "Debes tomar control de la conversación primero"
+}
+```
+
+#### Ejemplo React (Chat completo con control)
+
+```tsx
+import { useState, useEffect } from 'react';
+
+function LiveChatPanel({ phone }: { phone: string }) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [hasControl, setHasControl] = useState(false);
+
+  // Cargar mensajes
+  useEffect(() => {
+    fetch(`http://localhost:3008/panel/messages/${phone}`, {
+      headers: { 'X-Api-Key': 'your-api-key' },
+    })
+      .then(res => res.json())
+      .then(data => setMessages(data.data.messages));
+  }, [phone]);
+
+  // Tomar control
+  async function takeover() {
+    const response = await fetch(`http://localhost:3008/panel/takeover/${phone}`, {
+      method: 'POST',
+      headers: { 'X-Api-Key': 'your-api-key' },
+    });
+    const data = await response.json();
+    if (data.success) setHasControl(true);
+  }
+
+  // Enviar mensaje
+  async function sendMessage() {
+    if (!input.trim()) return;
+
+    const response = await fetch('http://localhost:3008/panel/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': 'your-api-key',
+      },
+      body: JSON.stringify({ phone, text: input }),
+    });
+
+    const data = await response.json();
+    if (data.success) {
+      setMessages([...messages, { text: input, origen: 'operador' }]);
+      setInput('');
+    }
+  }
+
+  return (
+    <div>
+      {!hasControl && (
+        <button onClick={takeover}>Tomar Control</button>
+      )}
+      <div className="messages">
+        {messages.map((msg, idx) => (
+          <div key={idx} className={msg.origen}>
+            {msg.text}
+          </div>
+        ))}
+      </div>
+      {hasControl && (
+        <div>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+          />
+          <button onClick={sendMessage}>Enviar</button>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+### 13. Obtener Mensajes de Conversación
+
+Obtiene el historial completo de mensajes de una conversación específica.
+
+**GET** `/panel/messages/:phone?limit=50`
+
+#### URL Parameters
+- `phone` (required): Número de teléfono
+
+#### Query Parameters
+- `limit` (optional): Número de mensajes (default: 50)
+
+#### Response Success (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "phone": "51987654321",
+    "messages": [
+      {
+        "id": "msg123",
+        "text": "Hola",
+        "fileUrl": null,
+        "fileType": "text",
+        "origen": "cliente",
+        "timestamp": "2025-10-17T10:30:00Z"
+      },
+      {
+        "id": "msg124",
+        "text": "¿En qué puedo ayudarte?",
+        "fileUrl": null,
+        "fileType": "text",
+        "origen": "bot",
+        "timestamp": "2025-10-17T10:30:05Z"
+      }
+    ],
+    "count": 2
+  }
+}
+```
+
+---
+
+### 14. Obtener Estado de Conversación
+
+Verifica el estado actual y si el modo humano está activo.
+
+**GET** `/panel/status/:phone`
+
+#### Response Success (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "phone": "51987654321",
+    "exists": true,
+    "modoHumano": true,
+    "estadoActual": "DISCOVERY",
+    "productoActual": "chompas",
+    "catalogoEnviado": true,
+    "pedidoEnProceso": false,
+    "ultimoContacto": "2025-10-17T10:30:00Z"
+  }
+}
+```
+
+---
+
 ## Health Check
 
-### 9. Verificar Estado del Agente
+### 15. Verificar Estado del Agente
 
 **GET** `/api/agent/health`
 
@@ -787,6 +1115,7 @@ VITE_API_KEY=your-api-key
 | 201 | Created | Recurso creado exitosamente |
 | 400 | Bad Request | Datos de entrada inválidos |
 | 401 | Unauthorized | API key faltante o inválida |
+| 403 | Forbidden | Operación no permitida (ej: enviar mensaje sin modo humano activo) |
 | 404 | Not Found | Recurso no encontrado |
 | 423 | Locked | Usuario en modo humano (no se puede enviar mensajes del bot) |
 | 500 | Internal Server Error | Error del servidor |

@@ -8,9 +8,8 @@ import trainingRoutes from '../routes/trainingRoutes.js';
 import conversationRoutes from '../routes/conversationRoutes.js';
 import userRoutes from '../routes/userRoutes.js';
 import agentRoutes from '../routes/agentRoutes.js';
+import panelRoutes, { setSendTextFunction } from '../routes/panelRoutes.js';
 import { main as flow } from './flows.js';
-import { db } from './firebaseConfig.js';
-import { FieldValue } from 'firebase-admin/firestore';
 import { auditAccess, authenticateRequest } from './middleware/security.js';
 import { createConversationHandler, MetaMessageCtx } from './conversation/handler.js';
 import { setCatalogoBot } from './services/catalogo.service.js';
@@ -47,6 +46,7 @@ app.use('/api/conversations', auditAccess, authenticateRequest, conversationRout
 app.use('/api/training', auditAccess, authenticateRequest, trainingRoutes);
 app.use('/api/users', auditAccess, authenticateRequest, userRoutes);
 app.use('/api/agent', auditAccess, authenticateRequest, agentRoutes);
+app.use('/panel', auditAccess, authenticateRequest, panelRoutes);
 app.use('/v1/live', auditAccess, authenticateRequest);
 app.use('/v1/catalog/reindex', auditAccess, authenticateRequest);
 
@@ -85,50 +85,9 @@ const main = async () => {
 
   setCatalogoBot(botInstance);
   setAgentBot(botInstance);
+  setSendTextFunction(sendText);
 
   const { httpServer } = botInstance;
-
-  app.post('/panel/send', auditAccess, authenticateRequest, async (req, res) => {
-    const { phone, text } = req.body ?? {};
-
-    if (!phone || !text) {
-      res.status(400).json({ ok: false, error: 'phone y text son obligatorios.' });
-      return;
-    }
-
-    try {
-      const chatStateSnap = await db.collection('liveChatStates').doc(phone).get();
-      if (chatStateSnap.exists && chatStateSnap.data()?.modoHumano === true) {
-        res.status(423).json({ ok: false, error: 'modo_humano_activo' });
-        return;
-      }
-
-      await sendText(phone, text);
-      await db.collection('liveChat').add({
-        user: phone,
-        text,
-        fileUrl: null,
-        fileType: 'text',
-        timestamp: FieldValue.serverTimestamp(),
-        origen: 'operador',
-      });
-
-      res.json({ ok: true });
-    } catch (error) {
-      console.error('Error enviando mensaje desde panel:', error);
-      await db
-        .collection('logs')
-        .doc('sendFailures')
-        .collection('entries')
-        .add({
-          phone,
-          text,
-          at: FieldValue.serverTimestamp(),
-          error: error instanceof Error ? error.message : String(error),
-        });
-      res.status(500).json({ ok: false, error: 'Error interno al enviar mensaje' });
-    }
-  });
 
   const appHandler = app as unknown as (req: any, res: any, next: any) => void;
   adapterProvider.server.use((req, res, next) => {
