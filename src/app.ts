@@ -46,7 +46,7 @@ app.use('/api/conversations', auditAccess, authenticateRequest, conversationRout
 app.use('/api/training', auditAccess, authenticateRequest, trainingRoutes);
 app.use('/api/users', auditAccess, authenticateRequest, userRoutes);
 app.use('/api/agent', auditAccess, authenticateRequest, agentRoutes);
-app.use('/panel', auditAccess, authenticateRequest, panelRoutes);
+app.use('/api/panel', auditAccess, authenticateRequest, panelRoutes);
 app.use('/v1/live', auditAccess, authenticateRequest);
 app.use('/v1/catalog/reindex', auditAccess, authenticateRequest);
 
